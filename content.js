@@ -236,52 +236,37 @@
 
         <!-- NOTES TAB -->
         <div id="cgs-tab-notes" class="cgs-tabpanel" style="display:none;">
-          <div class="cgs-section-title">Top priority goal</div>
-
-          <div class="cgs-notes-row" style="align-items:center;">
-            <div style="flex:1;">
-              <input id="cgs-goal" class="cgs-input" placeholder="Top priority goal..." />
+          <!-- GOAL CARD -->
+          <div class="cgs-goal-container">
+            <div class="cgs-section-title">Top Priority Goal</div>
+            <div class="cgs-goal-card">
+              <input id="cgs-goal" class="cgs-input-flat" placeholder="What is your main focus today?" />
+              <div class="cgs-goal-settings">
+                <div class="cgs-goal-days-wrap">
+                  <input id="cgs-goal-days" class="cgs-input-mini" type="number" min="1" max="365" />
+                  <span>days left</span>
+                </div>
+                <button id="cgs-set-deadline" class="cgs-btn-primary">Set Goal</button>
+              </div>
             </div>
-            <div style="width:110px;">
-              <input id="cgs-goal-days" class="cgs-input" type="number" min="1" max="365" placeholder="Days" />
-              <div class="cgs-mutedline" style="margin-top:4px;">Due (days)</div>
-            </div>
-            <div style="width:110px;">
-              <button id="cgs-set-deadline" class="cgs-btn">Set</button>
-            </div>
+            <div class="cgs-hint">Setting a goal adds a live countdown chip to the overlay.</div>
           </div>
-
-          <div class="cgs-mutedline">Set adds a deadline + countdown chip on the overlay.</div>
 
           <div id="cgs-divider"></div>
 
-          <div class="cgs-notes-row">
-            <div style="flex:1;">
-              <div class="cgs-section-title">Project</div>
-              <select id="cgs-project" class="cgs-select"></select>
-            </div>
-            <div style="width: 120px;">
-              <div class="cgs-section-title">New</div>
-              <button id="cgs-new-project" class="cgs-btn">+ Project</button>
-            </div>
-          </div>
-
-          <div class="cgs-section-title">Scratchpad (per project)</div>
-          <textarea id="cgs-scratch" class="cgs-textarea" placeholder="Notes, checklist, plan..."></textarea>
-          <div class="cgs-mutedline">Auto-saves locally.</div>
+          <!-- SCRATCHPAD -->
+          <div class="cgs-section-title">Scratchpad</div>
+          <textarea id="cgs-scratch" class="cgs-textarea" placeholder="Notes, plan, or a simple checklist..."></textarea>
+          <div class="cgs-hint">Auto-saves as you type.</div>
 
           <div id="cgs-divider"></div>
 
-          <div class="cgs-notes-row">
-            <div style="flex:1;">
-              <div class="cgs-section-title">Pinned snippets</div>
-              <input id="cgs-snippet-input" class="cgs-input" placeholder="Paste a prompt/checklist snippet..." />
-            </div>
-            <div style="width: 120px; margin-top: 22px;">
-              <button id="cgs-add-snippet" class="cgs-btn">Add</button>
-            </div>
+          <!-- SNIPPETS -->
+          <div class="cgs-section-title">Pinned Snippets</div>
+          <div class="cgs-snippet-row">
+            <input id="cgs-snippet-input" class="cgs-input-flat" placeholder="Paste a snippet or prompt..." />
+            <button id="cgs-add-snippet" class="cgs-btn-square">+</button>
           </div>
-
           <div id="cgs-snippets"></div>
         </div>
       </div>
@@ -484,24 +469,18 @@
   function defaultNotesState() {
     return {
       goal: "",
-      goalDueAt: null,             // ms timestamp or null
+      goalDueAt: null,
       goalDueDays: GOAL_DEFAULT_DUE_DAYS,
-      selectedProject: "General",
-      projects: {
-        "General": { scratch: "" },
-        "Resume": { scratch: "" },
-        "Playwright": { scratch: "" }
-      },
+      projects: { "General": { scratch: "" } },
       snippets: []
     };
   }
 
   function ensureNotesShape(state) {
     const s = state && typeof state === "object" ? state : defaultNotesState();
-    if (!s.projects || typeof s.projects !== "object") s.projects = {};
+    if (!s.projects || typeof s.projects !== "object") s.projects = { "General": { scratch: "" } };
     if (!s.projects["General"]) s.projects["General"] = { scratch: "" };
     if (!Array.isArray(s.snippets)) s.snippets = [];
-    if (!s.selectedProject || !s.projects[s.selectedProject]) s.selectedProject = "General";
     if (typeof s.goal !== "string") s.goal = "";
     if (!("goalDueAt" in s)) s.goalDueAt = null;
     if (typeof s.goalDueDays !== "number") s.goalDueDays = GOAL_DEFAULT_DUE_DAYS;
@@ -551,19 +530,10 @@
     });
   }
 
-  function renderProjectsSelect(state) {
-    const sel = document.getElementById("cgs-project");
-    if (!sel) return;
-
-    const names = Object.keys(state.projects).sort((a, b) => a.localeCompare(b));
-    sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
-    sel.value = state.selectedProject;
-  }
-
   function setScratchValue(state) {
     const ta = document.getElementById("cgs-scratch");
     if (!ta) return;
-    ta.value = state.projects?.[state.selectedProject]?.scratch ?? "";
+    ta.value = state.projects?.["General"]?.scratch ?? "";
   }
 
   function setGoalValue(state) {
@@ -586,7 +556,6 @@
 
     // initial render
     setGoalValue(state);
-    renderProjectsSelect(state);
     setScratchValue(state);
     renderSnippets(state.snippets);
 
@@ -649,46 +618,14 @@
       });
     }
 
-    // project change
-    const projSel = document.getElementById("cgs-project");
-    if (projSel) {
-      projSel.addEventListener("change", async () => {
-        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
-        const st = ensureNotesShape(raw);
-        st.selectedProject = projSel.value;
-        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
-        setScratchValue(st);
-      });
-    }
-
-    // new project
-    const newBtn = document.getElementById("cgs-new-project");
-    if (newBtn) {
-      newBtn.addEventListener("click", async () => {
-        const name = prompt("Project name?");
-        if (!name) return;
-        const trimmed = name.trim();
-        if (!trimmed) return;
-
-        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
-        const st = ensureNotesShape(raw);
-        if (!st.projects[trimmed]) st.projects[trimmed] = { scratch: "" };
-        st.selectedProject = trimmed;
-
-        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
-        renderProjectsSelect(st);
-        setScratchValue(st);
-      });
-    }
-
     // scratch autosave
     const scratch = document.getElementById("cgs-scratch");
     if (scratch) {
       scratch.addEventListener("input", debounce(async () => {
         const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
         const st = ensureNotesShape(raw);
-        if (!st.projects[st.selectedProject]) st.projects[st.selectedProject] = { scratch: "" };
-        st.projects[st.selectedProject].scratch = scratch.value || "";
+        if (!st.projects["General"]) st.projects["General"] = { scratch: "" };
+        st.projects["General"].scratch = scratch.value || "";
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
       }, 300));
     }
