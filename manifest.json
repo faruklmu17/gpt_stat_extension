@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Stats Overlay (Local)",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Floating stats widget for ChatGPT. Tracks active time & sessions locally; optional import for history stats.",
   "permissions": ["storage"],
   "content_scripts": [
