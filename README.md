@@ -1,0 +1,153 @@
+# ChatGPT Stats Overlay (Local)
+
+A lightweight browser extension that provides a floating statistics widget for ChatGPT, helping you track your usage patterns and productivity.
+
+## 🌟 Features
+
+### Real-Time Activity Tracking (No Import Required)
+- **Active Time Tracking**: Automatically tracks how long you're actively using ChatGPT
+  - Monitors mouse movements, keyboard input, scrolling, and clicks
+  - Only counts time when you're actively engaged (60-second idle timeout)
+  - Updates every 5 seconds for accurate tracking
+  - Persists across browser sessions
+
+- **Session Tracking**: Counts your ChatGPT sessions throughout the day
+  - Automatically detects new sessions (30-minute gap between activities)
+  - Resets daily at midnight
+  - Tracks sessions only when tab is active and you're engaged
+
+### Optional History Statistics (Import-Based)
+When you enable the import feature and upload your ChatGPT `conversations.json` file, you get:
+- **Total Conversations**: Complete count of all your ChatGPT conversations
+- **Last 7 Days**: Number of conversations in the past week
+- **This Month**: Conversations created in the current month
+- **Top Keywords**: Most frequently used words from your conversation titles (excludes common stop words)
+- **Import Timestamp**: Shows when you last imported your data
+
+### User Interface
+- **Draggable Widget**: Move the stats panel anywhere on your screen
+- **Minimizable**: Collapse to a small "Stats" pill when you need more space
+- **Persistent Position**: Remembers where you placed it
+- **Refresh Button**: Manually update all statistics
+- **Settings Toggle**: Easy checkbox to enable/disable import functionality
+- **Clean Design**: Modern, semi-transparent dark theme that doesn't obstruct your workflow
+
+## 📦 Installation
+
+### For Chrome/Edge/Brave
+
+1. Download or clone this repository
+2. Open your browser and navigate to:
+   - Chrome: `chrome://extensions/`
+   - Edge: `edge://extensions/`
+   - Brave: `brave://extensions/`
+3. Enable "Developer mode" (toggle in top-right corner)
+4. Click "Load unpacked"
+5. Select the folder containing this extension
+6. Navigate to [ChatGPT](https://chatgpt.com) or [chat.openai.com](https://chat.openai.com)
+7. The stats widget will appear in the top-right corner
+
+## 🚀 Usage
+
+### Basic Usage (No Setup Required)
+Once installed, the extension automatically starts tracking:
+- Your active time on ChatGPT
+- Number of sessions per day
+
+The widget displays this information in real-time without any configuration needed.
+
+### Importing Conversation History (Optional)
+
+To view historical statistics:
+
+1. **Export your ChatGPT data**:
+   - Go to ChatGPT Settings → Data Controls → Export Data
+   - Wait for the email with your data export
+   - Download and extract the `conversations.json` file
+
+2. **Enable import in the extension**:
+   - Check the box: "Enable Import (history stats from conversations.json)"
+   - Click the "Import" button
+   - Select your `conversations.json` file
+
+3. **View your stats**:
+   - Total conversations
+   - Recent activity (last 7 days, this month)
+   - Top keywords from your conversation titles
+
+## 🔒 Privacy & Data Storage
+
+- **100% Local**: All data is stored locally in your browser using Chrome's storage API
+- **No External Servers**: No data is sent to any external servers
+- **No Tracking**: The extension doesn't track or collect any personal information
+- **Optional Import**: History statistics are completely optional and only processed if you choose to import
+
+## 📊 What Gets Tracked
+
+### Automatic (Always On)
+- Active seconds on ChatGPT (only when tab is visible and you're interacting)
+- Number of sessions today
+- Widget position and minimized state
+
+### Manual Import (Optional)
+- Total conversation count
+- Conversations from last 7 days
+- Conversations this month
+- Top keywords from conversation titles
+- Import timestamp
+
+## 🛠️ Technical Details
+
+- **Manifest Version**: 3
+- **Permissions**: `storage` (for local data persistence)
+- **Supported Sites**: 
+  - `https://chatgpt.com/*`
+  - `https://chat.openai.com/*`
+- **Files**:
+  - `content.js`: Main tracking and UI logic
+  - `utils.js`: Data processing utilities
+  - `styles.css`: Widget styling
+  - `manifest.json`: Extension configuration
+
+### Activity Detection
+- **Idle Timeout**: 60 seconds (stops counting if no activity)
+- **Session Gap**: 30 minutes (new session after this period of inactivity)
+- **Update Interval**: 5 seconds (how often stats are updated)
+
+## 🎨 Customization
+
+The widget is designed to be unobtrusive:
+- Positioned below ChatGPT's share button area
+- Semi-transparent dark background
+- Draggable to any position
+- Minimizable to a small pill
+
+## 🐛 Troubleshooting
+
+**Widget not appearing?**
+- Refresh the ChatGPT page
+- Check that the extension is enabled in your browser's extension settings
+- Make sure you're on `chatgpt.com` or `chat.openai.com`
+
+**Import not working?**
+- Ensure you've checked the "Enable Import" checkbox first
+- Verify you're selecting the correct `conversations.json` file
+- Check browser console for error messages
+
+**Stats not updating?**
+- Click the refresh button (↻)
+- Make sure the tab is active and visible
+- Check that you're actively interacting with the page
+
+## 📝 License
+
+This project is open source and available for personal use.
+
+## 🤝 Contributing
+
+Feel free to submit issues, fork the repository, and create pull requests for any improvements.
+
+---
+
+**Note**: This extension is not affiliated with or endorsed by OpenAI.
+

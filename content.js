@@ -2,69 +2,95 @@
   if (window.__CGS_LOADED__) return;
   window.__CGS_LOADED__ = true;
 
-  // ---------- Settings / Storage Keys ----------
+  // ---------- Storage Keys ----------
   const STORAGE_KEYS = {
     MINIMIZED: "cgs_minimized",
     WIDGET_POS: "cgs_widget_pos",
     IMPORT_ENABLED: "cgs_import_enabled",
+    HISTORY_STATS: "cgs_history_stats",
 
-    // Live tracking (no import needed)
-    ACTIVE_SECONDS: "cgs_active_seconds",
-    ACTIVE_LAST_TICK: "cgs_active_last_tick",
+    // Active time buckets + streak
+    ACTIVE_TODAY_SECONDS: "cgs_active_today_seconds",   // number
+    ACTIVE_WEEK_SECONDS: "cgs_active_week_seconds",     // number
+    ACTIVE_MONTH_SECONDS: "cgs_active_month_seconds",   // number
+    ACTIVE_LAST_TICK: "cgs_active_last_tick",           // ms timestamp
+    ACTIVE_DAY_KEY: "cgs_active_day_key",               // YYYY-MM-DD
+    ACTIVE_WEEK_KEY: "cgs_active_week_key",             // YYYY-W##
+    ACTIVE_MONTH_KEY: "cgs_active_month_key",           // YYYY-MM
+    STREAK_COUNT: "cgs_streak_count",                   // number
+    STREAK_LAST_ACTIVE_DAY: "cgs_streak_last_active_day", // YYYY-MM-DD (last day with >= threshold)
 
     // Sessions
     SESSIONS_TODAY: "cgs_sessions_today",
     SESSION_LAST_ACTIVITY: "cgs_session_last_activity",
     SESSION_DATE_KEY: "cgs_session_date_key",
 
-    // Optional imported history stats (from conversations.json)
-    HISTORY_STATS: "cgs_history_stats"
+    // Notes / snippets
+    NOTES_STATE: "cgs_notes_state"
   };
 
+  // ---------- Tunables ----------
   const ACTIVE_TICK_MS = 5000;
-  const IDLE_CUTOFF_MS = 60_000;
-  const NEW_SESSION_GAP_MS = 30 * 60_000;
+  const IDLE_CUTOFF_MS = 60_000;        // "active" only if user interacted within last 60s
+  const NEW_SESSION_GAP_MS = 30 * 60_000; // new session if idle gap >= 30 mins
+  const STREAK_DAY_THRESHOLD_SEC = 120; // count a day toward streak if >= 2 minutes active
 
+  // ---------- Helpers ----------
   function $(sel, root = document) { return root.querySelector(sel); }
   const nowMs = () => Date.now();
-  const todayKey = () => new Date().toISOString().slice(0, 10);
+
+  function dayKey(d = new Date()) {
+    // local day key
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
+  }
+
+  function monthKey(d = new Date()) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  function weekKey(d = new Date()) {
+    // ISO-ish week in local time
+    const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const day = (date.getDay() + 6) % 7; // Monday=0
+    date.setDate(date.getDate() - day + 3); // Thu
+    const firstThu = new Date(date.getFullYear(), 0, 4);
+    const firstDay = (firstThu.getDay() + 6) % 7;
+    firstThu.setDate(firstThu.getDate() - firstDay + 3);
+    const weekNo = 1 + Math.round((date - firstThu) / 604800000);
+    return `${date.getFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+  }
 
   function formatSeconds(totalSeconds) {
     const s = Math.max(0, Math.floor(totalSeconds || 0));
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
-    return `${h}h ${m}m`;
+    const mm = String(m).padStart(2, "0");
+    return `${h}h ${mm}m`;
   }
 
   function isTabActive() {
     return document.visibilityState === "visible" && document.hasFocus();
   }
 
-  // ✅ Storage wrappers to avoid "Extension context invalidated"
+  // ✅ Safe storage wrappers (prevents "Extension context invalidated")
   async function safeGetStorage(keys) {
-    try {
-      return await chrome.storage.local.get(keys);
-    } catch (e) {
-      console.warn("safeGetStorage failed:", e?.message || e);
-      return {};
-    }
+    try { return await chrome.storage.local.get(keys); }
+    catch (e) { console.warn("safeGetStorage failed:", e?.message || e); return {}; }
   }
 
   async function safeSetStorage(obj) {
-    try {
-      await chrome.storage.local.set(obj);
-      return true;
-    } catch (e) {
-      console.warn("safeSetStorage failed:", e?.message || e);
-      return false;
-    }
+    try { await chrome.storage.local.set(obj); return true; }
+    catch (e) { console.warn("safeSetStorage failed:", e?.message || e); return false; }
   }
 
-  // ---------- Live activity tracking ----------
+  // ---------- Live activity detection ----------
   let lastUserActivityMs = nowMs();
-  function bumpActivity() {
-    lastUserActivityMs = nowMs();
-  }
+  function bumpActivity() { lastUserActivityMs = nowMs(); }
 
   window.addEventListener("mousemove", bumpActivity, { passive: true });
   window.addEventListener("keydown", bumpActivity, { passive: true });
@@ -73,7 +99,6 @@
 
   // ---------- UI ----------
   function createWidget() {
-    // If we already injected (SPA route change), don’t inject again
     if (document.getElementById("cgs-widget")) {
       return {
         w: document.getElementById("cgs-widget"),
@@ -91,68 +116,128 @@
       <div id="cgs-header">
         <div id="cgs-title">ChatGPT Stats</div>
         <div id="cgs-actions">
-          <button id="cgs-settings-btn" title="Settings">⚙</button>
-          <button id="cgs-import-btn" title="Import conversations.json">Import</button>
+          <button id="cgs-import-btn" title="Import conversations.json (optional)">Import</button>
           <button id="cgs-refresh-btn" title="Refresh">↻</button>
           <button id="cgs-min-btn" title="Minimize">—</button>
         </div>
       </div>
 
+      <div id="cgs-tabs">
+        <button class="cgs-tab cgs-tab-active" data-tab="stats">Stats</button>
+        <button class="cgs-tab" data-tab="notes">Notes</button>
+      </div>
+
       <div id="cgs-body">
-        <div class="cgs-grid">
-          <div class="cgs-card">
-            <div class="cgs-k">Active time (tracked)</div>
-            <div class="cgs-v" id="cgs-active">—</div>
+        <!-- STATS TAB -->
+        <div id="cgs-tab-stats" class="cgs-tabpanel">
+          <div class="cgs-grid">
+            <div class="cgs-card">
+              <div class="cgs-k">Active today</div>
+              <div class="cgs-v" id="cgs-active-today">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">Active this week</div>
+              <div class="cgs-v" id="cgs-active-week">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">Active this month</div>
+              <div class="cgs-v" id="cgs-active-month">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">Streak</div>
+              <div class="cgs-v" id="cgs-streak">—</div>
+            </div>
           </div>
-          <div class="cgs-card">
-            <div class="cgs-k">Sessions today</div>
-            <div class="cgs-v" id="cgs-sessions">—</div>
+
+          <div class="cgs-grid">
+            <div class="cgs-card">
+              <div class="cgs-k">Sessions today</div>
+              <div class="cgs-v" id="cgs-sessions">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">History imported</div>
+              <div class="cgs-v" id="cgs-imported">Not imported</div>
+            </div>
           </div>
-          <div class="cgs-card">
-            <div class="cgs-k">History total chats</div>
-            <div class="cgs-v" id="cgs-total">—</div>
+
+          <div class="cgs-section-title">History (optional import)</div>
+
+          <div class="cgs-grid">
+            <div class="cgs-card">
+              <div class="cgs-k">Total chats</div>
+              <div class="cgs-v" id="cgs-total">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">Last 7 days</div>
+              <div class="cgs-v" id="cgs-last7">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">This month</div>
+              <div class="cgs-v" id="cgs-month">—</div>
+            </div>
+            <div class="cgs-card">
+              <div class="cgs-k">Import enabled</div>
+              <div class="cgs-v" id="cgs-import-enabled">—</div>
+            </div>
           </div>
-          <div class="cgs-card">
-            <div class="cgs-k">History last 7 days</div>
-            <div class="cgs-v" id="cgs-last7">—</div>
-          </div>
+
+          <div id="cgs-divider"></div>
+
+          <div class="cgs-section-title">Top title keywords (history)</div>
+          <div id="cgs-keywords">(Enable import + load conversations.json to see this.)</div>
         </div>
 
-        <div class="cgs-grid">
-          <div class="cgs-card">
-            <div class="cgs-k">History this month</div>
-            <div class="cgs-v" id="cgs-month">—</div>
+        <!-- NOTES TAB -->
+        <div id="cgs-tab-notes" class="cgs-tabpanel" style="display:none;">
+          <div class="cgs-section-title">Current project goal</div>
+          <input id="cgs-goal" class="cgs-input" placeholder="e.g., Finish resume + apply to 10 roles/week" />
+
+          <div class="cgs-notes-row">
+            <div style="flex:1;">
+              <div class="cgs-section-title">Project</div>
+              <select id="cgs-project" class="cgs-select"></select>
+            </div>
+            <div style="width: 120px;">
+              <div class="cgs-section-title">New</div>
+              <button id="cgs-new-project" class="cgs-btn">+ Project</button>
+            </div>
           </div>
-          <div class="cgs-card">
-            <div class="cgs-k">History imported</div>
-            <div class="cgs-v" id="cgs-imported">—</div>
+
+          <div class="cgs-section-title">Scratchpad (per project)</div>
+          <textarea id="cgs-scratch" class="cgs-textarea" placeholder="Notes, checklist, plan..."></textarea>
+          <div class="cgs-mutedline">Auto-saves locally.</div>
+
+          <div id="cgs-divider"></div>
+
+          <div class="cgs-notes-row">
+            <div style="flex:1;">
+              <div class="cgs-section-title">Pinned snippets</div>
+              <input id="cgs-snippet-input" class="cgs-input" placeholder="Paste a prompt/checklist snippet..." />
+            </div>
+            <div style="width: 120px; margin-top: 22px;">
+              <button id="cgs-add-snippet" class="cgs-btn">Add</button>
+            </div>
           </div>
+
+          <div id="cgs-snippets"></div>
         </div>
-
-        <div id="cgs-divider"></div>
-
-        <div class="cgs-section-title">Top title keywords (history)</div>
-        <div id="cgs-keywords">(Import optional — enable it below if you want.)</div>
       </div>
 
       <div id="cgs-footer">
-        <small>Local-only. Active time works without import.</small>
-
-        <!-- ✅ Always visible settings (so you won't miss it) -->
-        <div id="cgs-settings" style="display:block;">
-          <label>
+        <small>Local-only. Time + notes work without import.</small>
+        <div class="cgs-footer-row">
+          <label class="cgs-check">
             <input type="checkbox" id="cgs-enable-import" />
-            Enable Import (history stats from conversations.json)
+            Enable import
           </label>
+          <span class="cgs-mutedline">Import reads exported <code>conversations.json</code> (optional).</span>
         </div>
-
         <input id="cgs-hidden-file" type="file" accept=".json,application/json" />
       </div>
     `;
 
     document.documentElement.appendChild(w);
     document.documentElement.appendChild(minimized);
-
     return { w, minimized };
   }
 
@@ -166,8 +251,14 @@
     if (el) el.innerHTML = html;
   }
 
-  function renderActiveTime(activeSeconds) {
-    safeText("cgs-active", formatSeconds(activeSeconds || 0));
+  function renderActiveBuckets(todaySec, weekSec, monthSec) {
+    safeText("cgs-active-today", formatSeconds(todaySec));
+    safeText("cgs-active-week", formatSeconds(weekSec));
+    safeText("cgs-active-month", formatSeconds(monthSec));
+  }
+
+  function renderStreak(count) {
+    safeText("cgs-streak", `${count || 0} day${(count || 0) === 1 ? "" : "s"}`);
   }
 
   function renderSessions(n) {
@@ -183,7 +274,7 @@
     safeText("cgs-imported", importedAt ? importedAt.toLocaleDateString() : "Not imported");
 
     const kw = Array.isArray(stats?.keywords) ? stats.keywords : [];
-    safeHtml("cgs-keywords", kw.length ? kw.map(k => `• ${k}`).join("<br/>") : "(No keywords yet. Import optional.)");
+    safeHtml("cgs-keywords", kw.length ? kw.map(k => `• ${k}`).join("<br/>") : "(No keywords yet.)");
   }
 
   // ---------- Dragging ----------
@@ -203,13 +294,11 @@
       const rect = widget.getBoundingClientRect();
       startLeft = rect.left;
       startTop = rect.top;
-
       e.preventDefault();
     });
 
     window.addEventListener("mousemove", async (e) => {
       if (!dragging) return;
-
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
 
@@ -235,7 +324,286 @@
     }
   }
 
-  // ---------- Sessions tick ----------
+  // ---------- Tabs ----------
+  function initTabs() {
+    const tabs = Array.from(document.querySelectorAll(".cgs-tab"));
+    tabs.forEach(btn => {
+      btn.addEventListener("click", () => {
+        tabs.forEach(b => b.classList.remove("cgs-tab-active"));
+        btn.classList.add("cgs-tab-active");
+
+        const tab = btn.getAttribute("data-tab");
+        const statsPanel = document.getElementById("cgs-tab-stats");
+        const notesPanel = document.getElementById("cgs-tab-notes");
+        if (!statsPanel || !notesPanel) return;
+
+        if (tab === "notes") {
+          statsPanel.style.display = "none";
+          notesPanel.style.display = "block";
+        } else {
+          notesPanel.style.display = "none";
+          statsPanel.style.display = "block";
+        }
+      });
+    });
+  }
+
+  // ---------- Notes ----------
+  function defaultNotesState() {
+    return {
+      goal: "",
+      selectedProject: "General",
+      projects: {
+        "General": { scratch: "" },
+        "Resume": { scratch: "" },
+        "Playwright": { scratch: "" }
+      },
+      snippets: []
+    };
+  }
+
+  function ensureNotesShape(state) {
+    const s = state && typeof state === "object" ? state : defaultNotesState();
+    if (!s.projects || typeof s.projects !== "object") s.projects = {};
+    if (!s.projects["General"]) s.projects["General"] = { scratch: "" };
+    if (!Array.isArray(s.snippets)) s.snippets = [];
+    if (!s.selectedProject || !s.projects[s.selectedProject]) s.selectedProject = "General";
+    if (typeof s.goal !== "string") s.goal = "";
+    return s;
+  }
+
+  function renderSnippets(snippets) {
+    const container = document.getElementById("cgs-snippets");
+    if (!container) return;
+
+    if (!snippets.length) {
+      container.innerHTML = `<div class="cgs-mutedline">(No snippets yet)</div>`;
+      return;
+    }
+
+    container.innerHTML = snippets.map((snip, idx) => `
+      <div class="cgs-snippet">
+        <div class="cgs-snippet-text" title="Click to copy">${escapeHtml(snip)}</div>
+        <button class="cgs-snippet-del" data-idx="${idx}" title="Delete">✕</button>
+      </div>
+    `).join("");
+
+    // copy on click
+    container.querySelectorAll(".cgs-snippet-text").forEach(el => {
+      el.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(el.textContent || ""); }
+        catch {}
+      });
+    });
+
+    // delete
+    container.querySelectorAll(".cgs-snippet-del").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const idx = Number(btn.getAttribute("data-idx"));
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const state = ensureNotesShape(raw);
+        state.snippets.splice(idx, 1);
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: state });
+        renderSnippets(state.snippets);
+      });
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function renderProjectsSelect(state) {
+    const sel = document.getElementById("cgs-project");
+    if (!sel) return;
+
+    const names = Object.keys(state.projects).sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+    sel.value = state.selectedProject;
+  }
+
+  function setScratchValue(state) {
+    const ta = document.getElementById("cgs-scratch");
+    if (!ta) return;
+    ta.value = state.projects?.[state.selectedProject]?.scratch ?? "";
+  }
+
+  function setGoalValue(state) {
+    const inp = document.getElementById("cgs-goal");
+    if (!inp) return;
+    inp.value = state.goal ?? "";
+  }
+
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  async function initNotesUI() {
+    const s = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+    let state = ensureNotesShape(s[STORAGE_KEYS.NOTES_STATE]);
+
+    // initial render
+    setGoalValue(state);
+    renderProjectsSelect(state);
+    setScratchValue(state);
+    renderSnippets(state.snippets);
+
+    // goal save
+    const goalInp = document.getElementById("cgs-goal");
+    if (goalInp) {
+      goalInp.addEventListener("input", debounce(async () => {
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        st.goal = goalInp.value || "";
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+      }, 300));
+    }
+
+    // project change
+    const projSel = document.getElementById("cgs-project");
+    if (projSel) {
+      projSel.addEventListener("change", async () => {
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        st.selectedProject = projSel.value;
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+        setScratchValue(st);
+      });
+    }
+
+    // new project
+    const newBtn = document.getElementById("cgs-new-project");
+    if (newBtn) {
+      newBtn.addEventListener("click", async () => {
+        const name = prompt("Project name?");
+        if (!name) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        if (!st.projects[trimmed]) st.projects[trimmed] = { scratch: "" };
+        st.selectedProject = trimmed;
+
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+        renderProjectsSelect(st);
+        setScratchValue(st);
+      });
+    }
+
+    // scratchpad autosave
+    const scratch = document.getElementById("cgs-scratch");
+    if (scratch) {
+      scratch.addEventListener("input", debounce(async () => {
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        if (!st.projects[st.selectedProject]) st.projects[st.selectedProject] = { scratch: "" };
+        st.projects[st.selectedProject].scratch = scratch.value || "";
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+      }, 350));
+    }
+
+    // add snippet
+    const snipInput = document.getElementById("cgs-snippet-input");
+    const addSnipBtn = document.getElementById("cgs-add-snippet");
+    if (snipInput && addSnipBtn) {
+      addSnipBtn.addEventListener("click", async () => {
+        const txt = (snipInput.value || "").trim();
+        if (!txt) return;
+
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        st.snippets.unshift(txt);
+        // keep list manageable
+        st.snippets = st.snippets.slice(0, 30);
+
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+        snipInput.value = "";
+        renderSnippets(st.snippets);
+      });
+    }
+
+    // persist default shape if missing
+    await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: state });
+  }
+
+  // ---------- Streak logic ----------
+  function parseDayKey(key) {
+    // YYYY-MM-DD
+    const [y, m, d] = (key || "").split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  }
+
+  function diffDays(dayA, dayB) {
+    // dayA/dayB are Date objects at local midnight
+    const a = new Date(dayA.getFullYear(), dayA.getMonth(), dayA.getDate()).getTime();
+    const b = new Date(dayB.getFullYear(), dayB.getMonth(), dayB.getDate()).getTime();
+    return Math.round((a - b) / 86400000);
+  }
+
+  async function maybeUpdateStreak(todaySeconds) {
+    const today = dayKey();
+    const s = await safeGetStorage([STORAGE_KEYS.STREAK_COUNT, STORAGE_KEYS.STREAK_LAST_ACTIVE_DAY]);
+    let streak = Number(s[STORAGE_KEYS.STREAK_COUNT] || 0);
+    const lastDay = s[STORAGE_KEYS.STREAK_LAST_ACTIVE_DAY] || null;
+
+    // Only update when the day meets threshold
+    if (todaySeconds < STREAK_DAY_THRESHOLD_SEC) {
+      renderStreak(streak);
+      return;
+    }
+
+    if (!lastDay) {
+      streak = 1;
+      await safeSetStorage({
+        [STORAGE_KEYS.STREAK_COUNT]: streak,
+        [STORAGE_KEYS.STREAK_LAST_ACTIVE_DAY]: today
+      });
+      renderStreak(streak);
+      return;
+    }
+
+    if (lastDay === today) {
+      renderStreak(streak);
+      return;
+    }
+
+    const lastDate = parseDayKey(lastDay);
+    const todayDate = parseDayKey(today);
+    if (!lastDate || !todayDate) {
+      renderStreak(streak);
+      return;
+    }
+
+    const gap = diffDays(todayDate, lastDate);
+
+    if (gap === 1) {
+      streak += 1;
+    } else if (gap > 1) {
+      streak = 1; // reset
+    } else {
+      // gap <= 0 (time skew) -> ignore
+    }
+
+    await safeSetStorage({
+      [STORAGE_KEYS.STREAK_COUNT]: streak,
+      [STORAGE_KEYS.STREAK_LAST_ACTIVE_DAY]: today
+    });
+
+    renderStreak(streak);
+  }
+
+  // ---------- Tick: sessions ----------
   async function tickSessions() {
     const t = nowMs();
     const s = await safeGetStorage([
@@ -246,9 +614,9 @@
 
     const last = s[STORAGE_KEYS.SESSION_LAST_ACTIVITY] || 0;
     const sessionsToday = s[STORAGE_KEYS.SESSIONS_TODAY] ?? 0;
-    const storedDay = s[STORAGE_KEYS.SESSION_DATE_KEY] || todayKey();
+    const storedDay = s[STORAGE_KEYS.SESSION_DATE_KEY] || dayKey();
 
-    const day = todayKey();
+    const day = dayKey();
     let newSessionsToday = sessionsToday;
     let newStoredDay = storedDay;
     let newLast = last;
@@ -274,25 +642,134 @@
     renderSessions(newSessionsToday);
   }
 
-  // ---------- Active time tick ----------
-  async function tickActiveTime() {
+  // ---------- Tick: active time buckets ----------
+  async function tickActiveTimeBuckets() {
     const t = nowMs();
-    const s = await safeGetStorage([STORAGE_KEYS.ACTIVE_SECONDS, STORAGE_KEYS.ACTIVE_LAST_TICK]);
-    const activeSeconds = s[STORAGE_KEYS.ACTIVE_SECONDS] || 0;
-    const lastTick = s[STORAGE_KEYS.ACTIVE_LAST_TICK] || t;
+    const today = dayKey();
+    const wk = weekKey();
+    const mon = monthKey();
+
+    const s = await safeGetStorage([
+      STORAGE_KEYS.ACTIVE_TODAY_SECONDS,
+      STORAGE_KEYS.ACTIVE_WEEK_SECONDS,
+      STORAGE_KEYS.ACTIVE_MONTH_SECONDS,
+      STORAGE_KEYS.ACTIVE_LAST_TICK,
+      STORAGE_KEYS.ACTIVE_DAY_KEY,
+      STORAGE_KEYS.ACTIVE_WEEK_KEY,
+      STORAGE_KEYS.ACTIVE_MONTH_KEY
+    ]);
+
+    let todaySec = Number(s[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0);
+    let weekSec = Number(s[STORAGE_KEYS.ACTIVE_WEEK_SECONDS] || 0);
+    let monthSec = Number(s[STORAGE_KEYS.ACTIVE_MONTH_SECONDS] || 0);
+
+    const lastTick = Number(s[STORAGE_KEYS.ACTIVE_LAST_TICK] || t);
+
+    const storedDay = s[STORAGE_KEYS.ACTIVE_DAY_KEY] || today;
+    const storedWeek = s[STORAGE_KEYS.ACTIVE_WEEK_KEY] || wk;
+    const storedMonth = s[STORAGE_KEYS.ACTIVE_MONTH_KEY] || mon;
+
+    // rollover resets
+    if (storedDay !== today) todaySec = 0;
+    if (storedWeek !== wk) weekSec = 0;
+    if (storedMonth !== mon) monthSec = 0;
 
     const deltaSec = Math.max(0, Math.floor((t - lastTick) / 1000));
-    let newActiveSeconds = activeSeconds;
-
     const recentlyActive = (t - lastUserActivityMs) <= IDLE_CUTOFF_MS;
-    if (isTabActive() && recentlyActive) newActiveSeconds += deltaSec;
+
+    if (isTabActive() && recentlyActive) {
+      todaySec += deltaSec;
+      weekSec += deltaSec;
+      monthSec += deltaSec;
+    }
 
     await safeSetStorage({
-      [STORAGE_KEYS.ACTIVE_SECONDS]: newActiveSeconds,
-      [STORAGE_KEYS.ACTIVE_LAST_TICK]: t
+      [STORAGE_KEYS.ACTIVE_TODAY_SECONDS]: todaySec,
+      [STORAGE_KEYS.ACTIVE_WEEK_SECONDS]: weekSec,
+      [STORAGE_KEYS.ACTIVE_MONTH_SECONDS]: monthSec,
+      [STORAGE_KEYS.ACTIVE_LAST_TICK]: t,
+      [STORAGE_KEYS.ACTIVE_DAY_KEY]: today,
+      [STORAGE_KEYS.ACTIVE_WEEK_KEY]: wk,
+      [STORAGE_KEYS.ACTIVE_MONTH_KEY]: mon
     });
 
-    renderActiveTime(newActiveSeconds);
+    renderActiveBuckets(todaySec, weekSec, monthSec);
+
+    // update streak based on today's seconds
+    await maybeUpdateStreak(todaySec);
+  }
+
+  // ---------- Import wiring (optional) ----------
+  async function initImportUI() {
+    const importBtn = document.getElementById("cgs-import-btn");
+    const enableImportCheckbox = document.getElementById("cgs-enable-import");
+    const fileInput = document.getElementById("cgs-hidden-file");
+
+    const saved = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED, STORAGE_KEYS.HISTORY_STATS]);
+    const importEnabled = !!saved[STORAGE_KEYS.IMPORT_ENABLED];
+    if (enableImportCheckbox) enableImportCheckbox.checked = importEnabled;
+
+    // Always visible import button; disabled unless enabled
+    if (importBtn) {
+      importBtn.disabled = !importEnabled;
+      safeText("cgs-import-enabled", importEnabled ? "Yes" : "No");
+
+      importBtn.addEventListener("click", async () => {
+        const s = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED]);
+        if (!s[STORAGE_KEYS.IMPORT_ENABLED]) {
+          alert("Enable import (checkbox) first.");
+          return;
+        }
+        fileInput?.click();
+      });
+    }
+
+    if (enableImportCheckbox) {
+      enableImportCheckbox.addEventListener("change", async (e) => {
+        const enabled = !!e.target.checked;
+        await safeSetStorage({ [STORAGE_KEYS.IMPORT_ENABLED]: enabled });
+        if (importBtn) importBtn.disabled = !enabled;
+        safeText("cgs-import-enabled", enabled ? "Yes" : "No");
+      });
+    }
+
+    // render any existing history stats
+    if (saved[STORAGE_KEYS.HISTORY_STATS]) renderHistory(saved[STORAGE_KEYS.HISTORY_STATS]);
+    else renderHistory(null);
+
+    if (fileInput) {
+      fileInput.addEventListener("change", async (e) => {
+        const s = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED]);
+        if (!s[STORAGE_KEYS.IMPORT_ENABLED]) return;
+
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+          const text = await file.text();
+          const json = JSON.parse(text);
+
+          const conversations = Array.isArray(json)
+            ? json
+            : (json?.conversations && Array.isArray(json.conversations) ? json.conversations : null);
+
+          if (!conversations) {
+            alert("Could not find a conversations array. Please select conversations.json.");
+            return;
+          }
+
+          // computeHistoryStatsFromExport comes from utils.js
+          const stats = computeHistoryStatsFromExport(conversations);
+          await safeSetStorage({ [STORAGE_KEYS.HISTORY_STATS]: stats });
+          renderHistory(stats);
+        } catch (err) {
+          console.error(err);
+          alert("Import failed. Please select a valid conversations.json file.");
+        } finally {
+          fileInput.value = "";
+        }
+      });
+    }
   }
 
   // ---------- Init ----------
@@ -300,7 +777,9 @@
   await restorePosition(w);
   enableDragging(w, $("#cgs-header", w));
 
-  // Minimize/restore
+  initTabs();
+
+  // Minimize / restore
   $("#cgs-min-btn", w).addEventListener("click", async () => {
     w.style.display = "none";
     minimized.style.display = "block";
@@ -313,112 +792,123 @@
     await safeSetStorage({ [STORAGE_KEYS.MINIMIZED]: false });
   });
 
-  // Optional import enable
-  const importBtn = $("#cgs-import-btn", w);
-  const enableImportCheckbox = $("#cgs-enable-import", w);
-
-  const saved = await safeGetStorage([
+  // Restore minimized state
+  const savedInit = await safeGetStorage([
     STORAGE_KEYS.MINIMIZED,
-    STORAGE_KEYS.IMPORT_ENABLED,
-    STORAGE_KEYS.ACTIVE_SECONDS,
     STORAGE_KEYS.SESSIONS_TODAY,
-    STORAGE_KEYS.HISTORY_STATS
+    STORAGE_KEYS.ACTIVE_TODAY_SECONDS,
+    STORAGE_KEYS.ACTIVE_WEEK_SECONDS,
+    STORAGE_KEYS.ACTIVE_MONTH_SECONDS,
+    STORAGE_KEYS.STREAK_COUNT,
+    STORAGE_KEYS.NOTES_STATE
   ]);
 
-  const importEnabled = !!saved[STORAGE_KEYS.IMPORT_ENABLED];
-  enableImportCheckbox.checked = importEnabled;
-
-  // ✅ Always visible Import button, disabled until enabled
-  importBtn.style.display = "inline-block";
-  importBtn.disabled = !importEnabled;
-
-  enableImportCheckbox.addEventListener("change", async (e) => {
-    const enabled = !!e.target.checked;
-    await safeSetStorage({ [STORAGE_KEYS.IMPORT_ENABLED]: enabled });
-    importBtn.disabled = !enabled;
-  });
-
-  if (saved[STORAGE_KEYS.MINIMIZED]) {
+  if (savedInit[STORAGE_KEYS.MINIMIZED]) {
     w.style.display = "none";
     minimized.style.display = "block";
   }
 
-  renderActiveTime(saved[STORAGE_KEYS.ACTIVE_SECONDS] || 0);
-  renderSessions(saved[STORAGE_KEYS.SESSIONS_TODAY] ?? 0);
-  renderHistory(saved[STORAGE_KEYS.HISTORY_STATS] || null);
+  // Initial renders
+  renderSessions(savedInit[STORAGE_KEYS.SESSIONS_TODAY] ?? 0);
+  renderActiveBuckets(
+    Number(savedInit[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0),
+    Number(savedInit[STORAGE_KEYS.ACTIVE_WEEK_SECONDS] || 0),
+    Number(savedInit[STORAGE_KEYS.ACTIVE_MONTH_SECONDS] || 0)
+  );
+  renderStreak(Number(savedInit[STORAGE_KEYS.STREAK_COUNT] || 0));
 
-  // Refresh
+  // Ensure notes exists + init UI
+  if (!savedInit[STORAGE_KEYS.NOTES_STATE]) {
+    await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: defaultNotesState() });
+  }
+  await initNotesUI();
+
+  // Import UI
+  await initImportUI();
+
+  // Refresh button
   $("#cgs-refresh-btn", w).addEventListener("click", async () => {
     const s = await safeGetStorage([
-      STORAGE_KEYS.ACTIVE_SECONDS,
       STORAGE_KEYS.SESSIONS_TODAY,
-      STORAGE_KEYS.HISTORY_STATS,
-      STORAGE_KEYS.IMPORT_ENABLED
+      STORAGE_KEYS.ACTIVE_TODAY_SECONDS,
+      STORAGE_KEYS.ACTIVE_WEEK_SECONDS,
+      STORAGE_KEYS.ACTIVE_MONTH_SECONDS,
+      STORAGE_KEYS.STREAK_COUNT,
+      STORAGE_KEYS.IMPORT_ENABLED,
+      STORAGE_KEYS.HISTORY_STATS
     ]);
-    renderActiveTime(s[STORAGE_KEYS.ACTIVE_SECONDS] || 0);
+
     renderSessions(s[STORAGE_KEYS.SESSIONS_TODAY] ?? 0);
+    renderActiveBuckets(
+      Number(s[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0),
+      Number(s[STORAGE_KEYS.ACTIVE_WEEK_SECONDS] || 0),
+      Number(s[STORAGE_KEYS.ACTIVE_MONTH_SECONDS] || 0)
+    );
+    renderStreak(Number(s[STORAGE_KEYS.STREAK_COUNT] || 0));
+    safeText("cgs-import-enabled", s[STORAGE_KEYS.IMPORT_ENABLED] ? "Yes" : "No");
     renderHistory(s[STORAGE_KEYS.HISTORY_STATS] || null);
-
-    const enabled = !!s[STORAGE_KEYS.IMPORT_ENABLED];
-    enableImportCheckbox.checked = enabled;
-    importBtn.disabled = !enabled;
   });
 
-  // Import logic
-  const fileInput = $("#cgs-hidden-file", w);
-
-  importBtn.addEventListener("click", async () => {
-    const s = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED]);
-    if (!s[STORAGE_KEYS.IMPORT_ENABLED]) {
-      alert("Enable Import (checkbox) first, then click Import again.");
-      return;
-    }
-    fileInput.click();
-  });
-
-  fileInput.addEventListener("change", async (e) => {
-    const s = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED]);
-    if (!s[STORAGE_KEYS.IMPORT_ENABLED]) return;
-
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-
-      const conversations = Array.isArray(json)
-        ? json
-        : (json?.conversations && Array.isArray(json.conversations) ? json.conversations : null);
-
-      if (!conversations) {
-        alert("Could not find a conversations array. Please select the exported conversations.json.");
-        return;
-      }
-
-      const stats = computeHistoryStatsFromExport(conversations);
-      await safeSetStorage({ [STORAGE_KEYS.HISTORY_STATS]: stats });
-      renderHistory(stats);
-    } catch (err) {
-      console.error(err);
-      alert("Import failed. Please select a valid conversations.json file.");
-    } finally {
-      fileInput.value = "";
-    }
-  });
-
-  // Baseline last tick
+  // Baseline last tick (so delta calc is sane)
   await safeSetStorage({ [STORAGE_KEYS.ACTIVE_LAST_TICK]: nowMs() });
 
   // Intervals + cleanup + final flush
-  const activeInterval = setInterval(tickActiveTime, ACTIVE_TICK_MS);
+  const activeInterval = setInterval(tickActiveTimeBuckets, ACTIVE_TICK_MS);
   const sessionInterval = setInterval(tickSessions, ACTIVE_TICK_MS);
 
   window.addEventListener("pagehide", async () => {
-    // ✅ flush last seconds before closing tab
-    await tickActiveTime();
+    // flush final seconds
+    await tickActiveTimeBuckets();
     await tickSessions();
     clearInterval(activeInterval);
     clearInterval(sessionInterval);
   });
 })();
+function formatCountdown(ms) {
+  const s = Math.floor(Math.max(0, ms) / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `Due in ${d}d ${h}h`;
+  if (h > 0) return `Due in ${h}h ${m}m`;
+  return `Due in ${m}m`;
+}
+
+function renderTopPriorityChip(goal, dueAt) {
+  const wrap = document.getElementById("cgs-priority");
+  const textEl = document.getElementById("cgs-priority-text");
+  const timerEl = document.getElementById("cgs-priority-timer");
+  if (!wrap || !textEl || !timerEl) return;
+
+  // reset urgency classes on widget
+  const widget = document.getElementById("cgs-widget");
+  widget?.classList.remove("cgs-pri-warn", "cgs-pri-over");
+
+  const hasGoal = (goal || "").trim().length > 0;
+  const hasDue = typeof dueAt === "number" && Number.isFinite(dueAt);
+
+  if (!hasGoal) {
+    wrap.style.display = "none";
+    return;
+  }
+
+  wrap.style.display = "block";
+  textEl.textContent = goal;
+
+  if (!hasDue) {
+    timerEl.textContent = "";
+    return;
+  }
+
+  const diff = dueAt - Date.now();
+  if (diff < 0) {
+    timerEl.textContent = "Overdue";
+    widget?.classList.add("cgs-pri-over");
+    return;
+  }
+
+  timerEl.textContent = formatCountdown(diff);
+
+  // warn when < 48 hours
+  if (diff <= 48 * 3600 * 1000) widget?.classList.add("cgs-pri-warn");
+}
