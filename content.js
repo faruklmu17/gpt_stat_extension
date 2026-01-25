@@ -10,15 +10,15 @@
     HISTORY_STATS: "cgs_history_stats",
 
     // Active time buckets + streak
-    ACTIVE_TODAY_SECONDS: "cgs_active_today_seconds",   // number
-    ACTIVE_WEEK_SECONDS: "cgs_active_week_seconds",     // number
-    ACTIVE_MONTH_SECONDS: "cgs_active_month_seconds",   // number
-    ACTIVE_LAST_TICK: "cgs_active_last_tick",           // ms timestamp
-    ACTIVE_DAY_KEY: "cgs_active_day_key",               // YYYY-MM-DD
-    ACTIVE_WEEK_KEY: "cgs_active_week_key",             // YYYY-W##
-    ACTIVE_MONTH_KEY: "cgs_active_month_key",           // YYYY-MM
-    STREAK_COUNT: "cgs_streak_count",                   // number
-    STREAK_LAST_ACTIVE_DAY: "cgs_streak_last_active_day", // YYYY-MM-DD (last day with >= threshold)
+    ACTIVE_TODAY_SECONDS: "cgs_active_today_seconds",
+    ACTIVE_WEEK_SECONDS: "cgs_active_week_seconds",
+    ACTIVE_MONTH_SECONDS: "cgs_active_month_seconds",
+    ACTIVE_LAST_TICK: "cgs_active_last_tick",
+    ACTIVE_DAY_KEY: "cgs_active_day_key",
+    ACTIVE_WEEK_KEY: "cgs_active_week_key",
+    ACTIVE_MONTH_KEY: "cgs_active_month_key",
+    STREAK_COUNT: "cgs_streak_count",
+    STREAK_LAST_ACTIVE_DAY: "cgs_streak_last_active_day",
 
     // Sessions
     SESSIONS_TODAY: "cgs_sessions_today",
@@ -31,16 +31,16 @@
 
   // ---------- Tunables ----------
   const ACTIVE_TICK_MS = 5000;
-  const IDLE_CUTOFF_MS = 60_000;        // "active" only if user interacted within last 60s
-  const NEW_SESSION_GAP_MS = 30 * 60_000; // new session if idle gap >= 30 mins
-  const STREAK_DAY_THRESHOLD_SEC = 120; // count a day toward streak if >= 2 minutes active
+  const IDLE_CUTOFF_MS = 60_000;
+  const NEW_SESSION_GAP_MS = 30 * 60_000;
+  const STREAK_DAY_THRESHOLD_SEC = 120; // 2 minutes
+  const GOAL_DEFAULT_DUE_DAYS = 7;
 
   // ---------- Helpers ----------
   function $(sel, root = document) { return root.querySelector(sel); }
   const nowMs = () => Date.now();
 
   function dayKey(d = new Date()) {
-    // local day key
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const da = String(d.getDate()).padStart(2, "0");
@@ -54,7 +54,6 @@
   }
 
   function weekKey(d = new Date()) {
-    // ISO-ish week in local time
     const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const day = (date.getDay() + 6) % 7; // Monday=0
     date.setDate(date.getDate() - day + 3); // Thu
@@ -77,7 +76,7 @@
     return document.visibilityState === "visible" && document.hasFocus();
   }
 
-  // ✅ Safe storage wrappers (prevents "Extension context invalidated")
+  // ✅ Safe storage wrappers
   async function safeGetStorage(keys) {
     try { return await chrome.storage.local.get(keys); }
     catch (e) { console.warn("safeGetStorage failed:", e?.message || e); return {}; }
@@ -116,9 +115,19 @@
       <div id="cgs-header">
         <div id="cgs-title">ChatGPT Stats</div>
         <div id="cgs-actions">
+          <button id="cgs-settings-btn" title="Settings">⚙</button>
           <button id="cgs-import-btn" title="Import conversations.json (optional)">Import</button>
           <button id="cgs-refresh-btn" title="Refresh">↻</button>
           <button id="cgs-min-btn" title="Minimize">—</button>
+        </div>
+      </div>
+
+      <!-- ✅ Top priority chip (always visible when goal exists) -->
+      <div id="cgs-priority" style="display:none;">
+        <div id="cgs-priority-chip">
+          <span id="cgs-priority-text"></span>
+          <span id="cgs-priority-timer"></span>
+          <button id="cgs-priority-clear" title="Clear">✕</button>
         </div>
       </div>
 
@@ -189,8 +198,24 @@
 
         <!-- NOTES TAB -->
         <div id="cgs-tab-notes" class="cgs-tabpanel" style="display:none;">
-          <div class="cgs-section-title">Current project goal</div>
-          <input id="cgs-goal" class="cgs-input" placeholder="e.g., Finish resume + apply to 10 roles/week" />
+          <div class="cgs-section-title">Top priority goal</div>
+
+          <div class="cgs-notes-row" style="align-items:center;">
+            <div style="flex:1;">
+              <input id="cgs-goal" class="cgs-input" placeholder="Top priority goal..." />
+            </div>
+            <div style="width:110px;">
+              <input id="cgs-goal-days" class="cgs-input" type="number" min="1" max="365" placeholder="Days" />
+              <div class="cgs-mutedline" style="margin-top:4px;">Due (days)</div>
+            </div>
+            <div style="width:110px;">
+              <button id="cgs-set-deadline" class="cgs-btn">Set</button>
+            </div>
+          </div>
+
+          <div class="cgs-mutedline">Set adds a deadline + countdown chip on the overlay.</div>
+
+          <div id="cgs-divider"></div>
 
           <div class="cgs-notes-row">
             <div style="flex:1;">
@@ -225,13 +250,17 @@
 
       <div id="cgs-footer">
         <small>Local-only. Time + notes work without import.</small>
-        <div class="cgs-footer-row">
-          <label class="cgs-check">
-            <input type="checkbox" id="cgs-enable-import" />
-            Enable import
-          </label>
-          <span class="cgs-mutedline">Import reads exported <code>conversations.json</code> (optional).</span>
+
+        <div id="cgs-settings-panel" style="display:none; margin-top:8px;">
+          <div class="cgs-footer-row">
+            <label class="cgs-check">
+              <input type="checkbox" id="cgs-enable-import" />
+              Enable import
+            </label>
+            <div class="cgs-mutedline">Import reads exported <code>conversations.json</code> (optional).</div>
+          </div>
         </div>
+
         <input id="cgs-hidden-file" type="file" accept=".json,application/json" />
       </div>
     `;
@@ -275,6 +304,54 @@
 
     const kw = Array.isArray(stats?.keywords) ? stats.keywords : [];
     safeHtml("cgs-keywords", kw.length ? kw.map(k => `• ${k}`).join("<br/>") : "(No keywords yet.)");
+  }
+
+  // ---------- Top Priority Chip ----------
+  function formatCountdown(ms) {
+    const s = Math.floor(Math.max(0, ms) / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `Due in ${d}d ${h}h`;
+    if (h > 0) return `Due in ${h}h ${m}m`;
+    return `Due in ${m}m`;
+  }
+
+  function renderTopPriorityChip(goal, dueAt) {
+    const wrap = document.getElementById("cgs-priority");
+    const textEl = document.getElementById("cgs-priority-text");
+    const timerEl = document.getElementById("cgs-priority-timer");
+    if (!wrap || !textEl || !timerEl) return;
+
+    const widget = document.getElementById("cgs-widget");
+    widget?.classList.remove("cgs-pri-warn", "cgs-pri-over");
+
+    const hasGoal = (goal || "").trim().length > 0;
+    const hasDue = typeof dueAt === "number" && Number.isFinite(dueAt);
+
+    if (!hasGoal) {
+      wrap.style.display = "none";
+      return;
+    }
+
+    wrap.style.display = "block";
+    textEl.textContent = goal;
+
+    if (!hasDue) {
+      timerEl.textContent = "";
+      return;
+    }
+
+    const diff = dueAt - Date.now();
+    if (diff < 0) {
+      timerEl.textContent = "Overdue";
+      widget?.classList.add("cgs-pri-over");
+      return;
+    }
+
+    timerEl.textContent = formatCountdown(diff);
+
+    if (diff <= 48 * 3600 * 1000) widget?.classList.add("cgs-pri-warn");
   }
 
   // ---------- Dragging ----------
@@ -352,6 +429,8 @@
   function defaultNotesState() {
     return {
       goal: "",
+      goalDueAt: null,             // ms timestamp or null
+      goalDueDays: GOAL_DEFAULT_DUE_DAYS,
       selectedProject: "General",
       projects: {
         "General": { scratch: "" },
@@ -369,7 +448,18 @@
     if (!Array.isArray(s.snippets)) s.snippets = [];
     if (!s.selectedProject || !s.projects[s.selectedProject]) s.selectedProject = "General";
     if (typeof s.goal !== "string") s.goal = "";
+    if (!("goalDueAt" in s)) s.goalDueAt = null;
+    if (typeof s.goalDueDays !== "number") s.goalDueDays = GOAL_DEFAULT_DUE_DAYS;
     return s;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
   function renderSnippets(snippets) {
@@ -388,15 +478,12 @@
       </div>
     `).join("");
 
-    // copy on click
     container.querySelectorAll(".cgs-snippet-text").forEach(el => {
       el.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(el.textContent || ""); }
-        catch {}
+        try { await navigator.clipboard.writeText(el.textContent || ""); } catch {}
       });
     });
 
-    // delete
     container.querySelectorAll(".cgs-snippet-del").forEach(btn => {
       btn.addEventListener("click", async () => {
         const idx = Number(btn.getAttribute("data-idx"));
@@ -407,15 +494,6 @@
         renderSnippets(state.snippets);
       });
     });
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
   }
 
   function renderProjectsSelect(state) {
@@ -457,15 +535,63 @@
     setScratchValue(state);
     renderSnippets(state.snippets);
 
-    // goal save
+    // render chip on load
+    renderTopPriorityChip(state.goal, state.goalDueAt);
+
     const goalInp = document.getElementById("cgs-goal");
+    const goalDaysInp = document.getElementById("cgs-goal-days");
+    const setDeadlineBtn = document.getElementById("cgs-set-deadline");
+
+    if (goalDaysInp) goalDaysInp.value = String(state.goalDueDays ?? GOAL_DEFAULT_DUE_DAYS);
+
+    // goal save
     if (goalInp) {
       goalInp.addEventListener("input", debounce(async () => {
         const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
         const st = ensureNotesShape(raw);
         st.goal = goalInp.value || "";
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
-      }, 300));
+        renderTopPriorityChip(st.goal, st.goalDueAt);
+      }, 250));
+    }
+
+    // set deadline
+    if (setDeadlineBtn && goalInp && goalDaysInp) {
+      setDeadlineBtn.addEventListener("click", async () => {
+        const days = Math.max(1, Math.min(365, Number(goalDaysInp.value || GOAL_DEFAULT_DUE_DAYS)));
+        const goal = (goalInp.value || "").trim();
+        if (!goal) {
+          alert("Add a goal first.");
+          return;
+        }
+
+        const dueAt = Date.now() + days * 86400 * 1000;
+
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        st.goal = goal;
+        st.goalDueDays = days;
+        st.goalDueAt = dueAt;
+
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+        renderTopPriorityChip(st.goal, st.goalDueAt);
+      });
+    }
+
+    // clear chip
+    const clearBtn = document.getElementById("cgs-priority-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", async () => {
+        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const st = ensureNotesShape(raw);
+        st.goal = "";
+        st.goalDueAt = null;
+
+        await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
+        renderTopPriorityChip(st.goal, st.goalDueAt);
+
+        if (goalInp) goalInp.value = "";
+      });
     }
 
     // project change
@@ -500,7 +626,7 @@
       });
     }
 
-    // scratchpad autosave
+    // scratch autosave
     const scratch = document.getElementById("cgs-scratch");
     if (scratch) {
       scratch.addEventListener("input", debounce(async () => {
@@ -509,7 +635,7 @@
         if (!st.projects[st.selectedProject]) st.projects[st.selectedProject] = { scratch: "" };
         st.projects[st.selectedProject].scratch = scratch.value || "";
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
-      }, 350));
+      }, 300));
     }
 
     // add snippet
@@ -523,7 +649,6 @@
         const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
         const st = ensureNotesShape(raw);
         st.snippets.unshift(txt);
-        // keep list manageable
         st.snippets = st.snippets.slice(0, 30);
 
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
@@ -532,20 +657,18 @@
       });
     }
 
-    // persist default shape if missing
+    // persist shape if missing
     await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: state });
   }
 
   // ---------- Streak logic ----------
   function parseDayKey(key) {
-    // YYYY-MM-DD
     const [y, m, d] = (key || "").split("-").map(Number);
     if (!y || !m || !d) return null;
     return new Date(y, m - 1, d);
   }
 
   function diffDays(dayA, dayB) {
-    // dayA/dayB are Date objects at local midnight
     const a = new Date(dayA.getFullYear(), dayA.getMonth(), dayA.getDate()).getTime();
     const b = new Date(dayB.getFullYear(), dayB.getMonth(), dayB.getDate()).getTime();
     return Math.round((a - b) / 86400000);
@@ -557,7 +680,6 @@
     let streak = Number(s[STORAGE_KEYS.STREAK_COUNT] || 0);
     const lastDay = s[STORAGE_KEYS.STREAK_LAST_ACTIVE_DAY] || null;
 
-    // Only update when the day meets threshold
     if (todaySeconds < STREAK_DAY_THRESHOLD_SEC) {
       renderStreak(streak);
       return;
@@ -586,14 +708,8 @@
     }
 
     const gap = diffDays(todayDate, lastDate);
-
-    if (gap === 1) {
-      streak += 1;
-    } else if (gap > 1) {
-      streak = 1; // reset
-    } else {
-      // gap <= 0 (time skew) -> ignore
-    }
+    if (gap === 1) streak += 1;
+    else if (gap > 1) streak = 1;
 
     await safeSetStorage({
       [STORAGE_KEYS.STREAK_COUNT]: streak,
@@ -656,7 +772,8 @@
       STORAGE_KEYS.ACTIVE_LAST_TICK,
       STORAGE_KEYS.ACTIVE_DAY_KEY,
       STORAGE_KEYS.ACTIVE_WEEK_KEY,
-      STORAGE_KEYS.ACTIVE_MONTH_KEY
+      STORAGE_KEYS.ACTIVE_MONTH_KEY,
+      STORAGE_KEYS.NOTES_STATE
     ]);
 
     let todaySec = Number(s[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0);
@@ -669,7 +786,6 @@
     const storedWeek = s[STORAGE_KEYS.ACTIVE_WEEK_KEY] || wk;
     const storedMonth = s[STORAGE_KEYS.ACTIVE_MONTH_KEY] || mon;
 
-    // rollover resets
     if (storedDay !== today) todaySec = 0;
     if (storedWeek !== wk) weekSec = 0;
     if (storedMonth !== mon) monthSec = 0;
@@ -694,12 +810,14 @@
     });
 
     renderActiveBuckets(todaySec, weekSec, monthSec);
-
-    // update streak based on today's seconds
     await maybeUpdateStreak(todaySec);
+
+    // keep countdown chip fresh
+    const ns = ensureNotesShape(s[STORAGE_KEYS.NOTES_STATE]);
+    renderTopPriorityChip(ns.goal, ns.goalDueAt);
   }
 
-  // ---------- Import wiring (optional) ----------
+  // ---------- Import wiring ----------
   async function initImportUI() {
     const importBtn = document.getElementById("cgs-import-btn");
     const enableImportCheckbox = document.getElementById("cgs-enable-import");
@@ -709,7 +827,6 @@
     const importEnabled = !!saved[STORAGE_KEYS.IMPORT_ENABLED];
     if (enableImportCheckbox) enableImportCheckbox.checked = importEnabled;
 
-    // Always visible import button; disabled unless enabled
     if (importBtn) {
       importBtn.disabled = !importEnabled;
       safeText("cgs-import-enabled", importEnabled ? "Yes" : "No");
@@ -717,7 +834,7 @@
       importBtn.addEventListener("click", async () => {
         const s = await safeGetStorage([STORAGE_KEYS.IMPORT_ENABLED]);
         if (!s[STORAGE_KEYS.IMPORT_ENABLED]) {
-          alert("Enable import (checkbox) first.");
+          alert("Enable import (⚙ settings) first.");
           return;
         }
         fileInput?.click();
@@ -733,7 +850,6 @@
       });
     }
 
-    // render any existing history stats
     if (saved[STORAGE_KEYS.HISTORY_STATS]) renderHistory(saved[STORAGE_KEYS.HISTORY_STATS]);
     else renderHistory(null);
 
@@ -758,7 +874,7 @@
             return;
           }
 
-          // computeHistoryStatsFromExport comes from utils.js
+          // from utils.js
           const stats = computeHistoryStatsFromExport(conversations);
           await safeSetStorage({ [STORAGE_KEYS.HISTORY_STATS]: stats });
           renderHistory(stats);
@@ -776,8 +892,17 @@
   const { w, minimized } = createWidget();
   await restorePosition(w);
   enableDragging(w, $("#cgs-header", w));
-
   initTabs();
+
+  // Settings toggle (⚙)
+  const settingsBtn = document.getElementById("cgs-settings-btn");
+  const settingsPanel = document.getElementById("cgs-settings-panel");
+  if (settingsBtn && settingsPanel) {
+    settingsBtn.addEventListener("click", () => {
+      const isOpen = settingsPanel.style.display === "block";
+      settingsPanel.style.display = isOpen ? "none" : "block";
+    });
+  }
 
   // Minimize / restore
   $("#cgs-min-btn", w).addEventListener("click", async () => {
@@ -792,7 +917,7 @@
     await safeSetStorage({ [STORAGE_KEYS.MINIMIZED]: false });
   });
 
-  // Restore minimized state
+  // Restore minimized state + initial renders
   const savedInit = await safeGetStorage([
     STORAGE_KEYS.MINIMIZED,
     STORAGE_KEYS.SESSIONS_TODAY,
@@ -808,7 +933,6 @@
     minimized.style.display = "block";
   }
 
-  // Initial renders
   renderSessions(savedInit[STORAGE_KEYS.SESSIONS_TODAY] ?? 0);
   renderActiveBuckets(
     Number(savedInit[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0),
@@ -817,13 +941,15 @@
   );
   renderStreak(Number(savedInit[STORAGE_KEYS.STREAK_COUNT] || 0));
 
-  // Ensure notes exists + init UI
+  // Ensure notes exists
   if (!savedInit[STORAGE_KEYS.NOTES_STATE]) {
     await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: defaultNotesState() });
+  } else {
+    const ns = ensureNotesShape(savedInit[STORAGE_KEYS.NOTES_STATE]);
+    renderTopPriorityChip(ns.goal, ns.goalDueAt);
   }
-  await initNotesUI();
 
-  // Import UI
+  await initNotesUI();
   await initImportUI();
 
   // Refresh button
@@ -835,7 +961,8 @@
       STORAGE_KEYS.ACTIVE_MONTH_SECONDS,
       STORAGE_KEYS.STREAK_COUNT,
       STORAGE_KEYS.IMPORT_ENABLED,
-      STORAGE_KEYS.HISTORY_STATS
+      STORAGE_KEYS.HISTORY_STATS,
+      STORAGE_KEYS.NOTES_STATE
     ]);
 
     renderSessions(s[STORAGE_KEYS.SESSIONS_TODAY] ?? 0);
@@ -847,9 +974,12 @@
     renderStreak(Number(s[STORAGE_KEYS.STREAK_COUNT] || 0));
     safeText("cgs-import-enabled", s[STORAGE_KEYS.IMPORT_ENABLED] ? "Yes" : "No");
     renderHistory(s[STORAGE_KEYS.HISTORY_STATS] || null);
+
+    const ns = ensureNotesShape(s[STORAGE_KEYS.NOTES_STATE]);
+    renderTopPriorityChip(ns.goal, ns.goalDueAt);
   });
 
-  // Baseline last tick (so delta calc is sane)
+  // Baseline last tick
   await safeSetStorage({ [STORAGE_KEYS.ACTIVE_LAST_TICK]: nowMs() });
 
   // Intervals + cleanup + final flush
@@ -857,58 +987,9 @@
   const sessionInterval = setInterval(tickSessions, ACTIVE_TICK_MS);
 
   window.addEventListener("pagehide", async () => {
-    // flush final seconds
     await tickActiveTimeBuckets();
     await tickSessions();
     clearInterval(activeInterval);
     clearInterval(sessionInterval);
   });
 })();
-function formatCountdown(ms) {
-  const s = Math.floor(Math.max(0, ms) / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `Due in ${d}d ${h}h`;
-  if (h > 0) return `Due in ${h}h ${m}m`;
-  return `Due in ${m}m`;
-}
-
-function renderTopPriorityChip(goal, dueAt) {
-  const wrap = document.getElementById("cgs-priority");
-  const textEl = document.getElementById("cgs-priority-text");
-  const timerEl = document.getElementById("cgs-priority-timer");
-  if (!wrap || !textEl || !timerEl) return;
-
-  // reset urgency classes on widget
-  const widget = document.getElementById("cgs-widget");
-  widget?.classList.remove("cgs-pri-warn", "cgs-pri-over");
-
-  const hasGoal = (goal || "").trim().length > 0;
-  const hasDue = typeof dueAt === "number" && Number.isFinite(dueAt);
-
-  if (!hasGoal) {
-    wrap.style.display = "none";
-    return;
-  }
-
-  wrap.style.display = "block";
-  textEl.textContent = goal;
-
-  if (!hasDue) {
-    timerEl.textContent = "";
-    return;
-  }
-
-  const diff = dueAt - Date.now();
-  if (diff < 0) {
-    timerEl.textContent = "Overdue";
-    widget?.classList.add("cgs-pri-over");
-    return;
-  }
-
-  timerEl.textContent = formatCountdown(diff);
-
-  // warn when < 48 hours
-  if (diff <= 48 * 3600 * 1000) widget?.classList.add("cgs-pri-warn");
-}
