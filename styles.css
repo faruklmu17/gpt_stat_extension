@@ -10,17 +10,19 @@
 /* MAIN WIDGET */
 #cgs-widget {
   position: fixed;
-  top: 84px;              /* ✅ BELOW ChatGPT Share button area */
+  top: 80px;
   right: 16px;
-  width: 320px;
+  width: clamp(200px, 18vw, 300px);
+  box-sizing: border-box;
   z-index: 999999;
   background: var(--cgs-bg);
   color: var(--cgs-text);
   border: 1px solid var(--cgs-border);
   border-radius: 14px;
   font-family: Arial, sans-serif;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+  transition: width 0.2s ease;
 }
 
 /* HEADER */
@@ -32,7 +34,8 @@
   border-bottom: 1px solid var(--cgs-border);
   font-size: 13px;
   user-select: none;
-  cursor: grab;          /* ✅ drag handle */
+  cursor: grab;
+  /* ✅ drag handle */
 }
 
 #cgs-header:active {
@@ -86,8 +89,8 @@
 }
 
 .cgs-card {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 12px;
   padding: 8px 10px;
 }
@@ -117,14 +120,14 @@
 
 #cgs-divider {
   margin: 10px 0;
-  border-top: 1px solid rgba(255,255,255,0.10);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 /* FOOTER */
 #cgs-footer {
   padding: 10px 12px;
   border-top: 1px solid var(--cgs-border);
-  background: rgba(0,0,0,0.12);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 #cgs-footer small {
@@ -136,8 +139,8 @@
   display: none;
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 #cgs-settings label {
@@ -155,18 +158,31 @@
 /* MINIMIZED PILL */
 #cgs-minimized {
   position: fixed;
-  top: 84px;             /* ✅ below Share button */
+  top: 84px;
+  /* ✅ below Share button */
   right: 16px;
   z-index: 999999;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 999px;
   background: var(--cgs-bg);
   color: var(--cgs-text);
   border: 1px solid var(--cgs-border);
   font-family: Arial, sans-serif;
+  font-weight: 800;
+  font-size: 12px;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   display: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+#cgs-minimized:hover {
+  background: #10a37f;
+  /* ChatGPT Green */
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 15px rgba(16, 163, 127, 0.4);
+  transform: translateY(-1px);
 }
 
 /* Tabs */
@@ -174,34 +190,36 @@
   display: flex;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.10);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.10);
 }
 
 .cgs-tab {
   flex: 1;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
 }
 
 .cgs-tab-active {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* Notes inputs */
-.cgs-input, .cgs-select, .cgs-textarea {
+.cgs-input,
+.cgs-select,
+.cgs-textarea {
   width: 100%;
   box-sizing: border-box;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
   padding: 10px 10px;
   outline: none;
   font-size: 12.5px;
@@ -217,16 +235,16 @@
   width: 100%;
   padding: 10px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.10);
-  color: rgba(255,255,255,0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   font-weight: 800;
   font-size: 12px;
 }
 
 .cgs-btn:hover {
-  background: rgba(255,255,255,0.14);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .cgs-notes-row {
@@ -237,7 +255,7 @@
 }
 
 .cgs-mutedline {
-  color: rgba(255,255,255,0.70);
+  color: rgba(255, 255, 255, 0.70);
   font-size: 12px;
   margin-top: 6px;
 }
@@ -251,7 +269,7 @@
   gap: 8px;
   align-items: center;
   font-size: 12px;
-  color: rgba(255,255,255,0.80);
+  color: rgba(255, 255, 255, 0.80);
 }
 
 /* Snippets list */
@@ -261,15 +279,15 @@
   align-items: center;
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
   margin-top: 8px;
 }
 
 .cgs-snippet-text {
   flex: 1;
   font-size: 12px;
-  color: rgba(255,255,255,0.92);
+  color: rgba(255, 255, 255, 0.92);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -278,9 +296,9 @@
 
 .cgs-snippet-del {
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   padding: 6px 8px;
   cursor: pointer;
 }
@@ -296,8 +314,8 @@
   align-items: center;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.10);
 }
 
 #cgs-priority-text {
@@ -317,13 +335,99 @@
 
 #cgs-priority-clear {
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   padding: 6px 8px;
   cursor: pointer;
 }
 
+@media screen and (max-width: 1440px) {
+  #cgs-widget {
+    width: clamp(160px, 12vw, 220px);
+    right: 8px;
+  }
+}
+
+@media screen and (max-width: 1200px) {
+  #cgs-widget {
+    width: 160px;
+    right: 6px;
+  }
+
+  .cgs-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    margin-bottom: 5px;
+  }
+
+  .cgs-card {
+    padding: 4px 6px;
+  }
+
+  .cgs-v {
+    font-size: 11px;
+  }
+
+  .cgs-k {
+    font-size: 9px;
+  }
+
+  #cgs-title {
+    font-size: 10.5px;
+  }
+
+  #cgs-header {
+    padding: 5px 8px;
+  }
+
+  #cgs-body {
+    padding: 6px 8px 4px 8px;
+  }
+
+  #cgs-actions {
+    gap: 3px;
+  }
+
+  #cgs-actions button {
+    padding: 3px 4px;
+    font-size: 9px;
+  }
+
+  #cgs-tabs {
+    padding: 4px 6px;
+    gap: 3px;
+  }
+
+  #cgs-tabs button {
+    padding: 5px 2px;
+    font-size: 10px;
+  }
+
+  .cgs-section-title {
+    font-size: 10px;
+    margin: 6px 0 4px 0;
+  }
+
+  #cgs-footer {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+}
+
 /* urgency states */
-.cgs-pri-warn #cgs-priority-chip { background: rgba(255, 200, 0, 0.18); }
-.cgs-pri-over #cgs-priority-chip { background: rgba(255, 60, 60, 0.18); }
+.cgs-has-goal #cgs-priority-chip {
+  border-color: rgba(255, 80, 80, 0.45);
+  background: rgba(255, 60, 60, 0.08);
+}
+
+.cgs-pri-warn #cgs-priority-chip {
+  background: rgba(255, 200, 0, 0.18);
+  border-color: rgba(255, 200, 0, 0.4);
+}
+
+.cgs-pri-over #cgs-priority-chip {
+  background: rgba(255, 60, 60, 0.22);
+  border-color: rgba(255, 60, 60, 0.6);
+  box-shadow: 0 0 8px rgba(255, 60, 60, 0.15);
+}

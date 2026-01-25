@@ -76,15 +76,49 @@
     return document.visibilityState === "visible" && document.hasFocus();
   }
 
+  let contextInvalidated = false;
+  let activeInterval, sessionInterval;
+
+  function stopAllActivity() {
+    contextInvalidated = true;
+    if (activeInterval) clearInterval(activeInterval);
+    if (sessionInterval) clearInterval(sessionInterval);
+    console.log("[CGS] Extension context invalidated. Stopping background activity.");
+  }
+
   // ✅ Safe storage wrappers
   async function safeGetStorage(keys) {
+    if (contextInvalidated || !chrome.runtime?.id) {
+      if (!contextInvalidated) stopAllActivity();
+      return {};
+    }
     try { return await chrome.storage.local.get(keys); }
-    catch (e) { console.warn("safeGetStorage failed:", e?.message || e); return {}; }
+    catch (e) {
+      const msg = e?.message || String(e);
+      if (msg.includes("context invalidated") || msg.includes("Extension context invalidated")) {
+        stopAllActivity();
+      } else {
+        console.warn("safeGetStorage failed:", msg);
+      }
+      return {};
+    }
   }
 
   async function safeSetStorage(obj) {
+    if (contextInvalidated || !chrome.runtime?.id) {
+      if (!contextInvalidated) stopAllActivity();
+      return false;
+    }
     try { await chrome.storage.local.set(obj); return true; }
-    catch (e) { console.warn("safeSetStorage failed:", e?.message || e); return false; }
+    catch (e) {
+      const msg = e?.message || String(e);
+      if (msg.includes("context invalidated") || msg.includes("Extension context invalidated")) {
+        stopAllActivity();
+      } else {
+        console.warn("safeSetStorage failed:", msg);
+      }
+      return false;
+    }
   }
 
   // ---------- Live activity detection ----------
@@ -108,6 +142,7 @@
     const minimized = document.createElement("div");
     minimized.id = "cgs-minimized";
     minimized.textContent = "Stats";
+    minimized.title = "ChatGPT Stats (click to expand)";
 
     const w = document.createElement("div");
     w.id = "cgs-widget";
@@ -169,31 +204,34 @@
             </div>
           </div>
 
-          <div class="cgs-section-title">History (optional import)</div>
+          <div id="cgs-history-section" style="display:none;">
+            <div id="cgs-divider"></div>
+            <div class="cgs-section-title">History (imported)</div>
 
-          <div class="cgs-grid">
-            <div class="cgs-card">
-              <div class="cgs-k">Total chats</div>
-              <div class="cgs-v" id="cgs-total">—</div>
+            <div class="cgs-grid">
+              <div class="cgs-card">
+                <div class="cgs-k">Total chats</div>
+                <div class="cgs-v" id="cgs-total">—</div>
+              </div>
+              <div class="cgs-card">
+                <div class="cgs-k">Last 7 days</div>
+                <div class="cgs-v" id="cgs-last7">—</div>
+              </div>
+              <div class="cgs-card">
+                <div class="cgs-k">This month</div>
+                <div class="cgs-v" id="cgs-month">—</div>
+              </div>
+              <div class="cgs-card">
+                <div class="cgs-k">Import enabled</div>
+                <div class="cgs-v" id="cgs-import-enabled">—</div>
+              </div>
             </div>
-            <div class="cgs-card">
-              <div class="cgs-k">Last 7 days</div>
-              <div class="cgs-v" id="cgs-last7">—</div>
-            </div>
-            <div class="cgs-card">
-              <div class="cgs-k">This month</div>
-              <div class="cgs-v" id="cgs-month">—</div>
-            </div>
-            <div class="cgs-card">
-              <div class="cgs-k">Import enabled</div>
-              <div class="cgs-v" id="cgs-import-enabled">—</div>
-            </div>
+
+            <div id="cgs-divider"></div>
+
+            <div class="cgs-section-title">Top title keywords</div>
+            <div id="cgs-keywords"></div>
           </div>
-
-          <div id="cgs-divider"></div>
-
-          <div class="cgs-section-title">Top title keywords (history)</div>
-          <div id="cgs-keywords">(Enable import + load conversations.json to see this.)</div>
         </div>
 
         <!-- NOTES TAB -->
@@ -281,9 +319,14 @@
   }
 
   function renderActiveBuckets(todaySec, weekSec, monthSec) {
-    safeText("cgs-active-today", formatSeconds(todaySec));
+    const todayStr = formatSeconds(todaySec);
+    safeText("cgs-active-today", todayStr);
     safeText("cgs-active-week", formatSeconds(weekSec));
     safeText("cgs-active-month", formatSeconds(monthSec));
+
+    // Also update minimized pill
+    const min = document.getElementById("cgs-minimized");
+    if (min) min.textContent = todayStr;
   }
 
   function renderStreak(count) {
@@ -295,14 +338,24 @@
   }
 
   function renderHistory(stats) {
-    safeText("cgs-total", stats?.total ?? "—");
-    safeText("cgs-last7", stats?.last7Count ?? "—");
-    safeText("cgs-month", stats?.monthCount ?? "—");
+    const section = document.getElementById("cgs-history-section");
+    if (!section) return;
 
-    const importedAt = stats?.importedAt ? new Date(stats.importedAt) : null;
+    if (!stats) {
+      section.style.display = "none";
+      safeText("cgs-imported", "Not imported");
+      return;
+    }
+
+    section.style.display = "block";
+    safeText("cgs-total", stats.total ?? "—");
+    safeText("cgs-last7", stats.last7Count ?? "—");
+    safeText("cgs-month", stats.monthCount ?? "—");
+
+    const importedAt = stats.importedAt ? new Date(stats.importedAt) : null;
     safeText("cgs-imported", importedAt ? importedAt.toLocaleDateString() : "Not imported");
 
-    const kw = Array.isArray(stats?.keywords) ? stats.keywords : [];
+    const kw = Array.isArray(stats.keywords) ? stats.keywords : [];
     safeHtml("cgs-keywords", kw.length ? kw.map(k => `• ${k}`).join("<br/>") : "(No keywords yet.)");
   }
 
@@ -324,7 +377,7 @@
     if (!wrap || !textEl || !timerEl) return;
 
     const widget = document.getElementById("cgs-widget");
-    widget?.classList.remove("cgs-pri-warn", "cgs-pri-over");
+    widget?.classList.remove("cgs-pri-warn", "cgs-pri-over", "cgs-has-goal");
 
     const hasGoal = (goal || "").trim().length > 0;
     const hasDue = typeof dueAt === "number" && Number.isFinite(dueAt);
@@ -333,6 +386,8 @@
       wrap.style.display = "none";
       return;
     }
+
+    widget?.classList.add("cgs-has-goal");
 
     wrap.style.display = "block";
     textEl.textContent = goal;
@@ -480,7 +535,7 @@
 
     container.querySelectorAll(".cgs-snippet-text").forEach(el => {
       el.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(el.textContent || ""); } catch {}
+        try { await navigator.clipboard.writeText(el.textContent || ""); } catch { }
       });
     });
 
@@ -983,8 +1038,8 @@
   await safeSetStorage({ [STORAGE_KEYS.ACTIVE_LAST_TICK]: nowMs() });
 
   // Intervals + cleanup + final flush
-  const activeInterval = setInterval(tickActiveTimeBuckets, ACTIVE_TICK_MS);
-  const sessionInterval = setInterval(tickSessions, ACTIVE_TICK_MS);
+  activeInterval = setInterval(tickActiveTimeBuckets, ACTIVE_TICK_MS);
+  sessionInterval = setInterval(tickSessions, ACTIVE_TICK_MS);
 
   window.addEventListener("pagehide", async () => {
     await tickActiveTimeBuckets();
