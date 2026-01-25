@@ -1,95 +1,170 @@
+:root {
+  --cgs-bg: rgba(20, 20, 20, 0.92);
+  --cgs-border: rgba(255, 255, 255, 0.14);
+  --cgs-muted: rgba(255, 255, 255, 0.72);
+  --cgs-text: rgba(255, 255, 255, 0.96);
+  --cgs-soft: rgba(255, 255, 255, 0.08);
+  --cgs-soft2: rgba(255, 255, 255, 0.12);
+}
+
+/* MAIN WIDGET */
 #cgs-widget {
   position: fixed;
-  top: 16px;
+  top: 84px;              /* ✅ BELOW ChatGPT Share button area */
   right: 16px;
-  width: 280px;
+  width: 320px;
   z-index: 999999;
-  background: rgba(20, 20, 20, 0.92);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 12px;
+  background: var(--cgs-bg);
+  color: var(--cgs-text);
+  border: 1px solid var(--cgs-border);
+  border-radius: 14px;
   font-family: Arial, sans-serif;
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   overflow: hidden;
 }
 
+/* HEADER */
 #cgs-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--cgs-border);
   font-size: 13px;
+  user-select: none;
+  cursor: grab;          /* ✅ drag handle */
+}
+
+#cgs-header:active {
+  cursor: grabbing;
 }
 
 #cgs-title {
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+/* BUTTONS */
+#cgs-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 #cgs-actions button {
-  margin-left: 6px;
   font-size: 12px;
   padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--cgs-border);
+  background: var(--cgs-soft);
+  color: var(--cgs-text);
   cursor: pointer;
+  line-height: 1;
 }
 
 #cgs-actions button:hover {
-  background: rgba(255,255,255,0.12);
+  background: var(--cgs-soft2);
 }
 
+#cgs-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* BODY */
 #cgs-body {
-  padding: 10px 12px;
+  padding: 10px 12px 6px 12px;
   font-size: 12.5px;
   line-height: 1.35;
 }
 
-.cgs-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px dashed rgba(255,255,255,0.1);
+.cgs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-.cgs-row:last-child {
-  border-bottom: none;
+.cgs-card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  padding: 8px 10px;
 }
 
-.cgs-label {
-  opacity: 0.85;
+.cgs-card .cgs-k {
+  font-size: 11.5px;
+  color: var(--cgs-muted);
+  margin-bottom: 4px;
 }
 
-.cgs-value {
-  font-weight: 700;
+.cgs-card .cgs-v {
+  font-size: 14px;
+  font-weight: 800;
 }
 
+.cgs-section-title {
+  font-weight: 800;
+  font-size: 12px;
+  margin: 10px 0 6px 0;
+}
+
+#cgs-keywords {
+  color: var(--cgs-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+#cgs-divider {
+  margin: 10px 0;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+/* FOOTER */
 #cgs-footer {
   padding: 10px 12px;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--cgs-border);
+  background: rgba(0,0,0,0.12);
 }
 
 #cgs-footer small {
-  opacity: 0.8;
+  opacity: 0.85;
+}
+
+#cgs-settings {
+  margin-top: 8px;
+  display: none;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.05);
+}
+
+#cgs-settings label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--cgs-muted);
 }
 
 #cgs-hidden-file {
   display: none;
 }
 
+/* MINIMIZED PILL */
 #cgs-minimized {
   position: fixed;
-  top: 16px;
+  top: 84px;             /* ✅ below Share button */
   right: 16px;
   z-index: 999999;
   padding: 10px 12px;
   border-radius: 999px;
-  background: rgba(20, 20, 20, 0.92);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--cgs-bg);
+  color: var(--cgs-text);
+  border: 1px solid var(--cgs-border);
   font-family: Arial, sans-serif;
   cursor: pointer;
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  display: none;
 }

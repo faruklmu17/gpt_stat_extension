@@ -1,15 +1,4 @@
-function safeNumber(n, fallback = 0) {
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
 function toDateFromExport(obj) {
-  // ChatGPT exports may have create_time / update_time (seconds) or (ms) or ISO strings
   const t =
     obj?.create_time ??
     obj?.update_time ??
@@ -21,7 +10,6 @@ function toDateFromExport(obj) {
   if (!t) return null;
 
   if (typeof t === "number") {
-    // handle seconds vs ms
     const ms = t < 1e12 ? t * 1000 : t;
     const d = new Date(ms);
     return isNaN(d.getTime()) ? null : d;
@@ -35,37 +23,30 @@ function toDateFromExport(obj) {
   return null;
 }
 
-function flattenConversationTexts(conversations) {
-  // Very defensive: export structure varies.
-  // We'll try common shapes; if missing we just return empty.
-  const texts = [];
-  for (const c of conversations) {
-    // Some exports include "mapping" objects of nodes with message content.
-    const mapping = c?.mapping || c?.conversation?.mapping;
-    if (mapping && typeof mapping === "object") {
-      for (const key of Object.keys(mapping)) {
-        const node = mapping[key];
-        const parts = node?.message?.content?.parts;
-        if (Array.isArray(parts)) {
-          for (const p of parts) {
-            if (typeof p === "string") texts.push(p);
-          }
-        }
-      }
-    }
-
-    // Some exports contain title
-    if (typeof c?.title === "string") texts.push(c.title);
-  }
-  return texts.join(" ");
+function monthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function topKeywords(text, k = 8) {
+function weekKey(d) {
+  // ISO-ish week grouping (simple): year-weekNumber
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function topKeywordsFromTitles(conversations, k = 8) {
   const stop = new Set([
     "the","a","an","and","or","to","of","in","on","for","with","is","are","was","were","it","this","that",
     "i","you","we","they","he","she","my","your","our","as","at","be","by","from","not","but","can","could",
     "should","would","how","what","why","when","where"
   ]);
+
+  const text = conversations
+    .map(c => (typeof c?.title === "string" ? c.title : ""))
+    .join(" ");
 
   const words = (text || "")
     .toLowerCase()
@@ -82,17 +63,17 @@ function topKeywords(text, k = 8) {
     .map(([w, n]) => `${w} (${n})`);
 }
 
-function computeStats(conversations) {
+function computeHistoryStatsFromExport(conversations) {
   const now = new Date();
-  const last7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const last7 = new Date(now.getTime() - 7 * 86400000);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   let total = 0;
   let last7Count = 0;
   let monthCount = 0;
 
-  // Count by month for future charting
-  const byMonth = new Map(); // "YYYY-MM" => count
+  const byMonth = new Map();
+  const byWeek = new Map();
 
   for (const c of conversations) {
     total += 1;
@@ -102,18 +83,19 @@ function computeStats(conversations) {
     if (d >= last7) last7Count += 1;
     if (d >= monthStart) monthCount += 1;
 
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    byMonth.set(key, (byMonth.get(key) || 0) + 1);
+    byMonth.set(monthKey(d), (byMonth.get(monthKey(d)) || 0) + 1);
+    byWeek.set(weekKey(d), (byWeek.get(weekKey(d)) || 0) + 1);
   }
 
-  const textBlob = flattenConversationTexts(conversations);
-  const keywords = topKeywords(textBlob, 8);
+  const keywords = topKeywordsFromTitles(conversations, 8);
 
   return {
     total,
     last7Count,
     monthCount,
     byMonth: Object.fromEntries([...byMonth.entries()].sort()),
-    keywords
+    byWeek: Object.fromEntries([...byWeek.entries()].sort()),
+    keywords,
+    importedAt: new Date().toISOString()
   };
 }
