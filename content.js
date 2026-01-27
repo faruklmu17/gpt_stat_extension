@@ -8,6 +8,7 @@
     WIDGET_POS: "cgs_widget_pos",
     IMPORT_ENABLED: "cgs_import_enabled",
     HISTORY_STATS: "cgs_history_stats",
+    WIDGET_SIZE: "cgs_widget_size",
 
     // Active time buckets + streak
     ACTIVE_TODAY_SECONDS: "cgs_active_today_seconds",
@@ -240,7 +241,7 @@
           <div class="cgs-goal-container">
             <div class="cgs-section-title">Top Priority Goal</div>
             <div class="cgs-goal-card">
-              <input id="cgs-goal" class="cgs-input-flat" placeholder="What is your main focus today?" />
+              <input id="cgs-goal" class="cgs-input-flat" placeholder="What is your main focus today?" maxlength="50" />
               <div class="cgs-goal-settings">
                 <div class="cgs-goal-days-wrap">
                   <input id="cgs-goal-days" class="cgs-input-mini" type="number" min="1" max="365" />
@@ -286,6 +287,7 @@
 
         <input id="cgs-hidden-file" type="file" accept=".json,application/json" />
       </div>
+      <div id="cgs-resize-handle"></div>
     `;
 
     document.documentElement.appendChild(w);
@@ -375,7 +377,7 @@
     widget?.classList.add("cgs-has-goal");
 
     wrap.style.display = "block";
-    textEl.textContent = goal;
+    textEl.textContent = goal.length > 50 ? goal.substring(0, 50) + "..." : goal;
 
     if (!hasDue) {
       timerEl.textContent = "";
@@ -432,12 +434,53 @@
     window.addEventListener("mouseup", () => { dragging = false; });
   }
 
+  function enableResizing(widget, handle) {
+    let resizing = false;
+    let startWidth = 0, startHeight = 0;
+    let startX = 0, startY = 0;
+
+    handle.addEventListener("mousedown", (e) => {
+      resizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = widget.offsetWidth;
+      startHeight = widget.offsetHeight;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    window.addEventListener("mousemove", async (e) => {
+      if (!resizing) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      const newWidth = Math.max(200, Math.min(600, startWidth + dx));
+      const newHeight = Math.max(150, Math.min(800, startHeight + dy));
+
+      widget.style.width = `${newWidth}px`;
+      widget.style.height = `${newHeight}px`;
+
+      await safeSetStorage({ [STORAGE_KEYS.WIDGET_SIZE]: { width: newWidth, height: newHeight } });
+    });
+
+    window.addEventListener("mouseup", () => { resizing = false; });
+  }
+
   async function restorePosition(widget) {
-    const { [STORAGE_KEYS.WIDGET_POS]: pos } = await safeGetStorage([STORAGE_KEYS.WIDGET_POS]);
+    const { [STORAGE_KEYS.WIDGET_POS]: pos, [STORAGE_KEYS.WIDGET_SIZE]: size } = await safeGetStorage([
+      STORAGE_KEYS.WIDGET_POS,
+      STORAGE_KEYS.WIDGET_SIZE
+    ]);
+
     if (pos && typeof pos.left === "number" && typeof pos.top === "number") {
       widget.style.left = `${pos.left}px`;
       widget.style.top = `${pos.top}px`;
       widget.style.right = "auto";
+    }
+
+    if (size && typeof size.width === "number" && typeof size.height === "number") {
+      widget.style.width = `${size.width}px`;
+      widget.style.height = `${size.height}px`;
     }
   }
 
@@ -839,11 +882,18 @@
         await safeSetStorage({ [STORAGE_KEYS.IMPORT_ENABLED]: enabled });
         if (importBtn) importBtn.disabled = !enabled;
         safeText("cgs-import-enabled", enabled ? "Yes" : "No");
+
+        // Toggle history section visibility based on import enabled
+        const { [STORAGE_KEYS.HISTORY_STATS]: stats } = await safeGetStorage([STORAGE_KEYS.HISTORY_STATS]);
+        renderHistory(enabled ? stats : null);
       });
     }
 
-    if (saved[STORAGE_KEYS.HISTORY_STATS]) renderHistory(saved[STORAGE_KEYS.HISTORY_STATS]);
-    else renderHistory(null);
+    if (saved[STORAGE_KEYS.HISTORY_STATS]) {
+      renderHistory(importEnabled ? saved[STORAGE_KEYS.HISTORY_STATS] : null);
+    } else {
+      renderHistory(null);
+    }
 
     if (fileInput) {
       fileInput.addEventListener("change", async (e) => {
@@ -884,6 +934,7 @@
   const { w, minimized } = createWidget();
   await restorePosition(w);
   enableDragging(w, $("#cgs-header", w));
+  enableResizing(w, $("#cgs-resize-handle", w));
   initTabs();
 
   // Settings toggle (⚙)

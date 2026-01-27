@@ -12,7 +12,6 @@
   position: fixed;
   top: 80px;
   right: 16px;
-  width: clamp(200px, 18vw, 300px);
   box-sizing: border-box;
   z-index: 999999;
   background: var(--cgs-bg);
@@ -22,7 +21,12 @@
   font-family: Arial, sans-serif;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   overflow: hidden;
-  transition: width 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-width: 600px;
+  min-height: 150px;
+  max-height: 90vh;
 }
 
 /* HEADER */
@@ -79,6 +83,9 @@
   padding: 10px 12px 6px 12px;
   font-size: 12.5px;
   line-height: 1.35;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .cgs-grid {
@@ -153,6 +160,17 @@
 
 #cgs-hidden-file {
   display: none;
+}
+
+#cgs-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.2) 50%);
+  z-index: 10;
 }
 
 /* MINIMIZED PILL */
@@ -331,6 +349,8 @@
   font-weight: 900;
   font-size: 12px;
   opacity: 0.95;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 #cgs-priority-clear {
