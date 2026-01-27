@@ -149,7 +149,7 @@
     w.id = "cgs-widget";
     w.innerHTML = `
       <div id="cgs-header">
-        <div id="cgs-title">ChatGPT Stats</div>
+        <div id="cgs-title">AI Chat Stats Overlay (for ChatGPT)</div>
         <div id="cgs-actions">
           <button id="cgs-settings-btn" title="Settings">⚙</button>
           <button id="cgs-import-btn" title="Import conversations.json (optional)">Import</button>
@@ -306,14 +306,20 @@
   }
 
   function renderActiveBuckets(todaySec, weekSec, monthSec) {
-    const todayStr = formatSeconds(todaySec);
-    safeText("cgs-active-today", todayStr);
+    safeText("cgs-active-today", formatSeconds(todaySec));
     safeText("cgs-active-week", formatSeconds(weekSec));
     safeText("cgs-active-month", formatSeconds(monthSec));
+  }
 
-    // Also update minimized pill
+  function renderMinimizedPill(todaySec, goal) {
     const min = document.getElementById("cgs-minimized");
-    if (min) min.textContent = todayStr;
+    if (!min) return;
+
+    const timeStr = formatSeconds(todaySec);
+    const words = (goal || "").trim().split(/\s+/).filter(Boolean);
+    const noteStr = words.length > 0 ? words.slice(0, 2).join(" ") + "..." : "";
+
+    min.textContent = noteStr ? `${timeStr} | ${noteStr}` : timeStr;
   }
 
   function renderStreak(count) {
@@ -614,11 +620,15 @@
     // goal save
     if (goalInp) {
       goalInp.addEventListener("input", debounce(async () => {
-        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const { [STORAGE_KEYS.NOTES_STATE]: raw, [STORAGE_KEYS.ACTIVE_TODAY_SECONDS]: todaySec } = await safeGetStorage([
+          STORAGE_KEYS.NOTES_STATE,
+          STORAGE_KEYS.ACTIVE_TODAY_SECONDS
+        ]);
         const st = ensureNotesShape(raw);
         st.goal = goalInp.value || "";
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
         renderTopPriorityChip(st.goal, st.goalDueAt);
+        renderMinimizedPill(Number(todaySec || 0), st.goal);
       }, 250));
     }
 
@@ -634,7 +644,10 @@
 
         const dueAt = Date.now() + days * 86400 * 1000;
 
-        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const { [STORAGE_KEYS.NOTES_STATE]: raw, [STORAGE_KEYS.ACTIVE_TODAY_SECONDS]: todaySec } = await safeGetStorage([
+          STORAGE_KEYS.NOTES_STATE,
+          STORAGE_KEYS.ACTIVE_TODAY_SECONDS
+        ]);
         const st = ensureNotesShape(raw);
         st.goal = goal;
         st.goalDueDays = days;
@@ -642,6 +655,7 @@
 
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
         renderTopPriorityChip(st.goal, st.goalDueAt);
+        renderMinimizedPill(Number(todaySec || 0), st.goal);
       });
     }
 
@@ -649,13 +663,17 @@
     const clearBtn = document.getElementById("cgs-priority-clear");
     if (clearBtn) {
       clearBtn.addEventListener("click", async () => {
-        const { [STORAGE_KEYS.NOTES_STATE]: raw } = await safeGetStorage([STORAGE_KEYS.NOTES_STATE]);
+        const { [STORAGE_KEYS.NOTES_STATE]: raw, [STORAGE_KEYS.ACTIVE_TODAY_SECONDS]: todaySec } = await safeGetStorage([
+          STORAGE_KEYS.NOTES_STATE,
+          STORAGE_KEYS.ACTIVE_TODAY_SECONDS
+        ]);
         const st = ensureNotesShape(raw);
         st.goal = "";
         st.goalDueAt = null;
 
         await safeSetStorage({ [STORAGE_KEYS.NOTES_STATE]: st });
         renderTopPriorityChip(st.goal, st.goalDueAt);
+        renderMinimizedPill(Number(todaySec || 0), "");
 
         if (goalInp) goalInp.value = "";
       });
@@ -847,9 +865,10 @@
     renderActiveBuckets(todaySec, weekSec, monthSec);
     await maybeUpdateStreak(todaySec);
 
-    // keep countdown chip fresh
+    // keep countdown chip & minimized pill fresh
     const ns = ensureNotesShape(s[STORAGE_KEYS.NOTES_STATE]);
     renderTopPriorityChip(ns.goal, ns.goalDueAt);
+    renderMinimizedPill(todaySec, ns.goal);
   }
 
   // ---------- Import wiring ----------
@@ -992,6 +1011,10 @@
     renderTopPriorityChip(ns.goal, ns.goalDueAt);
   }
 
+  const todaySecInit = Number(savedInit[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0);
+  const goalInit = ensureNotesShape(savedInit[STORAGE_KEYS.NOTES_STATE]).goal || "";
+  renderMinimizedPill(todaySecInit, goalInit);
+
   await initNotesUI();
   await initImportUI();
 
@@ -1020,6 +1043,7 @@
 
     const ns = ensureNotesShape(s[STORAGE_KEYS.NOTES_STATE]);
     renderTopPriorityChip(ns.goal, ns.goalDueAt);
+    renderMinimizedPill(Number(s[STORAGE_KEYS.ACTIVE_TODAY_SECONDS] || 0), ns.goal);
   });
 
   // Baseline last tick

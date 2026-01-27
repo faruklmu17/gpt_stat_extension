@@ -1,6 +1,6 @@
-# ChatGPT Stats Overlay (Local)
+# AI Chat Stats Overlay (for ChatGPT)
 
-A lightweight browser extension that provides a floating statistics widget for ChatGPT, helping you track your usage patterns and productivity.
+A lightweight browser extension that provides a floating statistics widget for ChatGPT, helping you track your usage patterns, manage notes, and stay focused on your goals.
 
 ## 🌟 Features
 
@@ -16,21 +16,30 @@ A lightweight browser extension that provides a floating statistics widget for C
   - Resets daily at midnight
   - Tracks sessions only when tab is active and you're engaged
 
-### Optional History Statistics (Import-Based)
-When you enable the import feature and upload your ChatGPT `conversations.json` file, you get:
-- **Total Conversations**: Complete count of all your ChatGPT conversations
-- **Last 7 Days**: Number of conversations in the past week
-- **This Month**: Conversations created in the current month
-- **Top Keywords**: Most frequently used words from your conversation titles (excludes common stop words)
-- **Import Timestamp**: Shows when you last imported your data
+### Notes & Goals (v1.1)
+- **Top Priority Goal**: Set a focused goal and track its deadline
+- **Urgent Visual Feedback**: Goals now feature "Urgent" styling (red pulses) when added or overdue
+- **Scratchpad**: A simplified, persistent workspace for notes that auto-saves instantly
+- **Pinned Snippets**: Quick-copy bank for frequently used prompts/snippets
+- **Live Countdown**: See exactly how much time is left for your goal in the overlay
 
-### User Interface
-- **Draggable Widget**: Move the stats panel anywhere on your screen
-- **Minimizable**: Collapse to a small "Stats" pill when you need more space
-- **Persistent Position**: Remembers where you placed it
-- **Refresh Button**: Manually update all statistics
-- **Settings Toggle**: Easy checkbox to enable/disable import functionality
-- **Clean Design**: Modern, semi-transparent dark theme that doesn't obstruct your workflow
+### User Interface & Experience
+- **Ultra-Compact Mode**: Optimized width for **13-inch laptop screens** to prevent blocking chat messages.
+- **Responsive Layout**: Switches to a single-column grid on smaller windows for maximum readability.
+- **Enhanced Minimized Pill**: A sleek, hover-animated pill that displays:
+  - **Live Active Time Today**
+  - **Goal Preview** (abbreviated text of your top goal)
+  - **Sleek Interactions**: Glows and transforms into "ChatGPT Green" on hover.
+- **Draggable Widget**: Move the stats panel anywhere on your screen; positions are saved automatically.
+- **Stability Engine**: Handles extension updates/reloads gracefully with safe storage wrappers.
+- **Clean Aesthetic**: Modern glassmorphism design that feels native to the ChatGPT interface.
+
+### Optional History Statistics (Import-Based)
+Enable the import feature to analyze your historical ChatGPT usage:
+- **Total Conversations**: Complete count of all your ChatGPT conversations.
+- **Activity Summary**: Breakdown of activity from the **Last 7 Days** and **Current Month**.
+- **Top Keywords**: Most frequently used words from your conversation titles.
+- **Automatic Hiding**: This entire section stays hidden until you import data, keeping your UI clean.
 
 ## 📦 Installation
 

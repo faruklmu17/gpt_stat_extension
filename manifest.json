@@ -1,14 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Stats Overlay (Local)",
-  "version": "1.0.0",
+  "name": "AI Chat Stats Overlay (for ChatGPT)",
+  "version": "1.1.0",
   "description": "Floating stats widget for ChatGPT. Tracks active time & sessions locally; optional import for history stats.",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["utils.js", "content.js"],
-      "css": ["styles.css"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "utils.js",
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ]

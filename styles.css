@@ -192,7 +192,7 @@
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   display: none;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  user-select: none;
+  white-space: nowrap;
 }
 
 #cgs-minimized:hover {
