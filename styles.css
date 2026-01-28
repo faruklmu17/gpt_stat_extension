@@ -12,6 +12,7 @@
   position: fixed;
   top: 80px;
   right: 16px;
+  width: clamp(280px, 18vw, 360px);
   box-sizing: border-box;
   z-index: 999999;
   background: var(--cgs-bg);
@@ -23,7 +24,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  min-width: 160px;
   max-width: 600px;
   min-height: 150px;
   max-height: 90vh;
@@ -364,7 +365,7 @@
 
 @media screen and (max-width: 1440px) {
   #cgs-widget {
-    width: clamp(160px, 12vw, 220px);
+    width: clamp(200px, 15vw, 240px);
     right: 8px;
   }
 }
